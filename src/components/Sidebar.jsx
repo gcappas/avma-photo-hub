@@ -4,11 +4,8 @@ import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2 } from 'luci
 export default function Sidebar() {
   return (
     <aside className="sidebar">
-      <div style={{ padding: '0 12px', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ background: 'var(--primary)', color: 'white', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-          AV
-        </div>
-        <h2 style={{ fontSize: '1.25rem', margin: 0 }}>Photo Hub</h2>
+      <div style={{ padding: '0 12px', marginBottom: '2.5rem', display: 'flex', alignItems: 'center' }}>
+        <img src="/avmais-logo.png" alt="AVMA Insurance Services Logo" style={{ maxHeight: '44px', maxWidth: '100%', objectFit: 'contain' }} />
       </div>
 
       <nav style={{ flex: 1 }}>

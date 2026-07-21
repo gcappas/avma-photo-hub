@@ -1,11 +1,14 @@
 :root {
-  --primary: #0061FE; /* Premium Dropbox Blue */
-  --primary-hover: #0050d2;
-  --bg-color: #F7F9FA;
-  --surface: rgba(255, 255, 255, 0.9);
-  --sidebar-bg: #F7F9FA;
+  --primary: #00305E; /* AVMAIS Midnight Blue */
+  --primary-hover: #001F3E;
+  --accent: #55B800; /* AVMAIS Limeade Green */
+  --accent-hover: #449300;
+  --teal: #008B95; /* AVMAIS Teal */
+  --bg-color: #F7F8F8; /* AVMAIS Light Grey */
+  --surface: rgba(255, 255, 255, 0.95);
+  --sidebar-bg: #FFFFFF;
   --text-dark: #1E1E1E;
-  --text-muted: #637381;
+  --text-muted: #5E6A71; /* AVMAIS Slate Grey */
   --border: #E0E4E8;
   --border-focus: #B0C4DE;
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
@@ -87,8 +90,8 @@ a {
 }
 
 .sidebar-nav-link.active {
-  background-color: #E8F0FE;
-  color: var(--primary);
+  background-color: #EAF6F7;
+  color: var(--teal);
 }
 
 .main-content {
@@ -149,7 +152,7 @@ a {
 
 /* Buttons */
 .btn {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: white;
   border: none;
   padding: 8px 16px;
@@ -164,7 +167,7 @@ a {
 }
 
 .btn:hover {
-  background-color: var(--primary-hover);
+  background-color: var(--accent-hover);
 }
 
 .btn-secondary {
