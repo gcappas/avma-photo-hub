@@ -23,6 +23,8 @@ export default function FolderView({ searchQuery }) {
   
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showLightbox, setShowLightbox] = useState(false);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
 
   // Fetch current folder details & build breadcrumbs
   useEffect(() => {
@@ -193,6 +195,54 @@ export default function FolderView({ searchQuery }) {
     }
   };
 
+  const handlePhotoClick = (photo) => {
+    if (isSelectMode) {
+      if (selectedPhotoIds.includes(photo.id)) {
+        setSelectedPhotoIds(selectedPhotoIds.filter(id => id !== photo.id));
+      } else {
+        setSelectedPhotoIds([...selectedPhotoIds, photo.id]);
+      }
+    } else {
+      setSelectedPhoto(photo);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedPhotoIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete the ${selectedPhotoIds.length} selected photos?`)) return;
+    
+    const idsToDelete = [...selectedPhotoIds];
+    const photosToDelete = photos.filter(p => idsToDelete.includes(p.id));
+    
+    // Clear selection state early
+    setIsSelectMode(false);
+    setSelectedPhotoIds([]);
+    
+    if (selectedPhoto && idsToDelete.includes(selectedPhoto.id)) {
+      setSelectedPhoto(null);
+    }
+
+    for (const photo of photosToDelete) {
+      try {
+        // 1. Delete from Firestore
+        await deleteDoc(doc(db, 'photos', photo.id));
+        
+        // 2. Delete from Storage
+        if (photo.storagePath) {
+          const storageRef = ref(storage, photo.storagePath);
+          await deleteObject(storageRef).catch((err) => {
+            console.warn("Storage deletion failed:", err);
+          });
+        }
+      } catch (error) {
+        console.error(`Error deleting photo ${photo.id}:`, error);
+        try {
+          await deleteDoc(doc(db, 'photos', photo.id));
+        } catch (err) {}
+      }
+    }
+  };
+
   return (
     <div style={{ display: 'flex', gap: '2rem' }}>
       <div style={{ flex: 1 }}>
@@ -253,39 +303,103 @@ export default function FolderView({ searchQuery }) {
         {/* Photos Section */}
         {!isUploadView && (
           <div>
-            <h3 style={{ fontSize: '1.1rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              {isAllPhotos ? 'All Photos' : 'Photos'}
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.1rem', color: 'var(--text-muted)', margin: 0 }}>
+                {isAllPhotos ? 'All Photos' : 'Photos'}
+              </h3>
+              {filteredPhotos.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {isSelectMode ? (
+                    <>
+                      <button 
+                        className="btn-secondary" 
+                        onClick={() => {
+                          setIsSelectMode(false);
+                          setSelectedPhotoIds([]);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        className="btn" 
+                        onClick={handleDeleteSelected}
+                        disabled={selectedPhotoIds.length === 0}
+                        style={{ 
+                          padding: '6px 12px', 
+                          fontSize: '0.85rem', 
+                          background: selectedPhotoIds.length === 0 ? 'var(--text-muted)' : '#ff4d4f', 
+                          borderColor: selectedPhotoIds.length === 0 ? 'var(--text-muted)' : '#ff4d4f',
+                          cursor: selectedPhotoIds.length === 0 ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        Delete Selected ({selectedPhotoIds.length})
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      className="btn-secondary" 
+                      onClick={() => setIsSelectMode(true)}
+                      style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                    >
+                      Select Multiple
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             {filteredPhotos.length === 0 ? (
               <p style={{ color: 'var(--text-muted)' }}>No photos match your criteria.</p>
             ) : (
-            <div className="photo-grid">
-              {filteredPhotos.map(photo => (
-                <div key={photo.id} className="photo-card" onClick={() => setSelectedPhoto(photo)}>
-                  {photo.originalUrl ? (
-                    <img src={photo.originalUrl} alt="Uploaded asset" />
-                  ) : (
-                    <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                      <FileImage size={32} />
+              <div className="photo-grid">
+                {filteredPhotos.map(photo => {
+                  const isSelected = selectedPhotoIds.includes(photo.id);
+                  return (
+                    <div 
+                      key={photo.id} 
+                      className={`photo-card ${isSelected ? 'selected' : ''}`} 
+                      onClick={() => handlePhotoClick(photo)}
+                      style={{ 
+                        position: 'relative',
+                        outline: isSelected ? '2px solid var(--primary)' : 'none',
+                        transform: isSelected ? 'scale(0.98)' : 'none'
+                      }}
+                    >
+                      {isSelectMode && (
+                        <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'white', borderRadius: '4px', padding: '2px', display: 'flex', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            readOnly
+                            style={{ width: '16px', height: '16px', cursor: 'pointer', margin: 0 }}
+                          />
+                        </div>
+                      )}
+                      {photo.originalUrl ? (
+                        <img src={photo.originalUrl} alt="Uploaded asset" />
+                      ) : (
+                        <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                          <FileImage size={32} />
+                        </div>
+                      )}
+                      {(photo.status === 'processing' || photo.status === 'processing_ai') && (
+                        <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                          AI Analyzing...
+                        </div>
+                      )}
+                      {photo.tags && photo.tags.length > 0 && (
+                        <div className="photo-overlay">
+                          {photo.tags.slice(0, 3).map(t => (
+                            <span key={t} className="tag-badge">{t}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {(photo.status === 'processing' || photo.status === 'processing_ai') && (
-                    <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
-                      AI Analyzing...
-                    </div>
-                  )}
-                  {photo.tags && photo.tags.length > 0 && (
-                    <div className="photo-overlay">
-                      {photo.tags.slice(0, 3).map(t => (
-                        <span key={t} className="tag-badge">{t}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
