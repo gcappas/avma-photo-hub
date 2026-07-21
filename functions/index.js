@@ -56,7 +56,7 @@ exports.analyzePhoto = onObjectFinalized({
       }
     });
 
-    const result = JSON.parse(response.text());
+    const result = JSON.parse(response.text);
     
     // Find the firestore document by storagePath
     const db = getFirestore();

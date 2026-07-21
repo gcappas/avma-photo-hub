@@ -64,7 +64,8 @@ export default function UploadManager({ targetFolderId }) {
       ));
       
       try {
-        const heic2any = (await import('heic2any')).default;
+        const heicModule = await import('heic2any');
+        const heic2any = heicModule.default || heicModule;
         const convertedBlob = await heic2any({
           blob: fileToUpload,
           toType: 'image/jpeg',
