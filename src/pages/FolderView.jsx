@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { Folder, FileImage, Plus, ChevronRight, X, Trash2 } from 'lucide-react';
@@ -243,6 +243,53 @@ export default function FolderView({ searchQuery }) {
     }
   };
 
+  const handleAddTag = async (photo, e) => {
+    e.preventDefault();
+    const input = e.target.elements.newTag;
+    const tag = input.value.trim().toLowerCase();
+    
+    if (!tag) return;
+    
+    if (photo.tags && photo.tags.includes(tag)) {
+      input.value = '';
+      return;
+    }
+
+    try {
+      const photoRef = doc(db, 'photos', photo.id);
+      await updateDoc(photoRef, {
+        tags: arrayUnion(tag)
+      });
+      
+      setSelectedPhoto(prev => ({
+        ...prev,
+        tags: prev.tags ? [...prev.tags, tag] : [tag]
+      }));
+      
+      input.value = '';
+    } catch (error) {
+      console.error("Error adding tag:", error);
+      alert("Failed to add tag.");
+    }
+  };
+
+  const handleRemoveTag = async (photo, tag) => {
+    try {
+      const photoRef = doc(db, 'photos', photo.id);
+      await updateDoc(photoRef, {
+        tags: arrayRemove(tag)
+      });
+      
+      setSelectedPhoto(prev => ({
+        ...prev,
+        tags: prev.tags ? prev.tags.filter(t => t !== tag) : []
+      }));
+    } catch (error) {
+      console.error("Error removing tag:", error);
+      alert("Failed to remove tag.");
+    }
+  };
+
   return (
     <div style={{ display: 'flex', gap: '2rem' }}>
       <div style={{ flex: 1 }}>
@@ -430,15 +477,56 @@ export default function FolderView({ searchQuery }) {
           </div>
           
           <div style={{ marginBottom: '1.5rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>AI Tags</h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Tags</h4>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '0.75rem' }}>
               {selectedPhoto.tags?.map(t => (
-                <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 500 }}>
+                <span 
+                  key={t} 
+                  style={{ 
+                    background: '#E8F0FE', 
+                    color: 'var(--primary)', 
+                    padding: '4px 8px 4px 10px', 
+                    borderRadius: '12px', 
+                    fontSize: '0.85rem', 
+                    fontWeight: 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
                   {t}
+                  <button 
+                    onClick={() => handleRemoveTag(selectedPhoto, t)} 
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: 'var(--primary)' }}
+                    title="Remove Tag"
+                  >
+                    <X size={14} />
+                  </button>
                 </span>
               ))}
-              {!selectedPhoto.tags && <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>None</span>}
+              {(!selectedPhoto.tags || selectedPhoto.tags.length === 0) && <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>None</span>}
             </div>
+            <form onSubmit={(e) => handleAddTag(selectedPhoto, e)} style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="text" 
+                name="newTag" 
+                placeholder="Add custom tag..." 
+                style={{ 
+                  flex: 1, 
+                  padding: '6px 12px', 
+                  borderRadius: '6px', 
+                  border: '1px solid var(--border)',
+                  fontSize: '0.85rem'
+                }}
+              />
+              <button 
+                type="submit" 
+                className="btn" 
+                style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+              >
+                Add
+              </button>
+            </form>
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
