@@ -1,12 +1,41 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, onSnapshot } from 'firebase/firestore';
 import { storage, db } from '../firebase';
-import { UploadCloud, FileImage, X } from 'lucide-react';
+import { UploadCloud, FileImage, X, Folder, FolderPlus } from 'lucide-react';
 
 export default function UploadManager({ targetFolderId }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploads, setUploads] = useState([]); // { file, progress, status, id }
+  
+  // Folder selector modal states
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [folders, setFolders] = useState([]);
+  const [selectedFolderId, setSelectedFolderId] = useState(targetFolderId || '');
+  const [newFolderName, setNewFolderName] = useState('');
+
+  // Fetch active folders
+  useEffect(() => {
+    if (!showFolderModal) return;
+
+    const q = query(collection(db, 'folders'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const folderList = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(f => f.status !== 'deleted');
+      setFolders(folderList);
+    });
+
+    return unsubscribe;
+  }, [showFolderModal]);
+
+  // Keep selectedFolderId in sync if targetFolderId changes
+  useEffect(() => {
+    if (targetFolderId) {
+      setSelectedFolderId(targetFolderId);
+    }
+  }, [targetFolderId]);
 
   const handleDrag = useCallback((e) => {
     e.preventDefault();
@@ -40,7 +69,16 @@ export default function UploadManager({ targetFolderId }) {
       f.name.toLowerCase().endsWith('.heif')
     );
     
-    const newUploads = imageFiles.map(file => ({
+    if (imageFiles.length === 0) return;
+
+    // Save pending files and open folder picker modal
+    setPendingFiles(imageFiles);
+    setNewFolderName('');
+    setShowFolderModal(true);
+  };
+
+  const executeUpload = (folderId) => {
+    const newUploads = pendingFiles.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
       progress: 0,
@@ -48,13 +86,33 @@ export default function UploadManager({ targetFolderId }) {
     }));
 
     setUploads(prev => [...newUploads, ...prev]);
+    setShowFolderModal(false);
+    setPendingFiles([]);
 
     newUploads.forEach(upload => {
-      uploadFile(upload);
+      uploadFile(upload, folderId);
     });
   };
 
-  const uploadFile = (uploadItem) => {
+  const handleCreateAndUpload = async (e) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+
+    try {
+      // Create new folder in Firestore
+      const folderRef = await addDoc(collection(db, 'folders'), {
+        name: newFolderName.trim(),
+        parentId: targetFolderId || null,
+        createdAt: serverTimestamp()
+      });
+      executeUpload(folderRef.id);
+    } catch (err) {
+      console.error("Error creating folder for upload:", err);
+      alert("Failed to create folder.");
+    }
+  };
+
+  const uploadFile = (uploadItem, folderId) => {
     const storageRef = ref(storage, `photos/${Date.now()}_${uploadItem.file.name}`);
     const uploadTask = uploadBytesResumable(storageRef, uploadItem.file);
 
@@ -82,7 +140,7 @@ export default function UploadManager({ targetFolderId }) {
             size: uploadItem.file.size,
             contentType: uploadItem.file.type || (uploadItem.file.name.toLowerCase().endsWith('.heic') ? 'image/heic' : 'image/jpeg'),
             uploadedAt: serverTimestamp(),
-            folderId: targetFolderId || null,
+            folderId: folderId || null,
             status: 'processing_ai'
           });
 
@@ -124,6 +182,93 @@ export default function UploadManager({ targetFolderId }) {
           Select Files
         </button>
       </div>
+
+      {/* Choose/Create Folder Modal */}
+      {showFolderModal && (
+        <div className="modal-overlay" onClick={() => { setShowFolderModal(false); setPendingFiles([]); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <h3 style={{ marginBottom: '0.5rem' }}>Choose Upload Target Folder</h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+              All photos must be uploaded into a folder. Please pick an existing folder or create a new one.
+            </p>
+
+            {/* Create New Folder option */}
+            <form onSubmit={handleCreateAndUpload} style={{ display: 'flex', gap: '8px', marginBottom: '1.5rem' }}>
+              <input 
+                type="text" 
+                placeholder="Create new folder & upload..." 
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                style={{ flex: 1, padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.9rem' }}
+              />
+              <button 
+                type="submit" 
+                className="btn" 
+                disabled={!newFolderName.trim()}
+                style={{ background: !newFolderName.trim() ? 'var(--text-muted)' : 'var(--accent)', cursor: !newFolderName.trim() ? 'not-allowed' : 'pointer' }}
+              >
+                <FolderPlus size={16} /> Create
+              </button>
+            </form>
+
+            {/* Existing Folders Selection */}
+            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Select Existing Folder</h4>
+            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem', marginBottom: '1.5rem' }}>
+              {folders.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', padding: '1rem', textAlign: 'center' }}>No folders found. Create one above to start!</p>
+              ) : (
+                folders.map(folder => (
+                  <div 
+                    key={folder.id}
+                    onClick={() => setSelectedFolderId(folder.id)}
+                    style={{ 
+                      padding: '10px', 
+                      borderRadius: '6px', 
+                      cursor: 'pointer', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '10px',
+                      background: selectedFolderId === folder.id ? '#E8F0FE' : 'transparent',
+                      color: selectedFolderId === folder.id ? 'var(--primary)' : 'inherit',
+                      fontWeight: selectedFolderId === folder.id ? 600 : 'normal'
+                    }}
+                  >
+                    <Folder size={18} color={selectedFolderId === folder.id ? 'var(--primary)' : 'var(--text-muted)'} fill={selectedFolderId === folder.id ? 'rgba(0, 97, 254, 0.1)' : 'none'} />
+                    {folder.name}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                onClick={() => {
+                  setShowFolderModal(false);
+                  setPendingFiles([]);
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn" 
+                onClick={() => executeUpload(selectedFolderId)}
+                disabled={!selectedFolderId}
+                style={{ 
+                  background: !selectedFolderId ? 'var(--text-muted)' : 'var(--accent)', 
+                  borderColor: !selectedFolderId ? 'var(--text-muted)' : 'var(--accent)',
+                  cursor: !selectedFolderId ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Confirm & Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Progress List */}
       {uploads.length > 0 && (
