@@ -35,6 +35,9 @@ export default function Sidebar() {
         <NavLink to="/settings" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
           <Settings size={18} /> Settings
         </NavLink>
+        <div style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.35)', padding: '12px 12px 0 12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', marginTop: '8px' }}>
+          Version 1.2.0
+        </div>
       </div>
     </aside>
   );
