@@ -17,8 +17,83 @@ exports.analyzePhoto = onObjectFinalized({
   const contentType = event.data.contentType;
   
   // Only process images in the photos/ directory
-  if (!contentType.startsWith("image/") || !filePath.startsWith("photos/")) {
+  const isHeic = filePath.toLowerCase().endsWith('.heic') || filePath.toLowerCase().endsWith('.heif') || (contentType && (contentType === 'image/heic' || contentType === 'image/heif'));
+  const isImage = (contentType && contentType.startsWith("image/")) || isHeic;
+  
+  if (!isImage || !filePath.startsWith("photos/")) {
     return console.log("Not a new photo upload. Ignoring.");
+  }
+
+  // Handle HEIC/HEIF conversion server-side
+  if (isHeic) {
+    console.log(`HEIC image detected. Converting ${filePath} to JPEG...`);
+    try {
+      const { getStorage } = require("firebase-admin/storage");
+      const bucket = getStorage().bucket(fileBucket);
+      const file = bucket.file(filePath);
+      
+      const [buffer] = await file.download();
+      
+      const convert = require("heic-convert");
+      const outputBuffer = await convert({
+        buffer: buffer,
+        format: 'JPEG',
+        quality: 0.95
+      });
+      
+      const newFilePath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
+      const newFile = bucket.file(newFilePath);
+      
+      await newFile.save(outputBuffer, {
+        metadata: {
+          contentType: 'image/jpeg'
+        }
+      });
+      
+      // Get a signed URL far in the future
+      const [downloadURL] = await newFile.getSignedUrl({
+        action: 'read',
+        expires: '03-09-2491'
+      });
+      
+      // Update the firestore document
+      const db = getFirestore();
+      const photosRef = db.collection("photos");
+      const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
+      
+      if (!snapshot.empty) {
+        const docId = snapshot.docs[0].id;
+        const newFilename = snapshot.docs[0].data().filename.replace(/\.(heic|heif)$/i, '.jpg');
+        
+        await photosRef.doc(docId).update({
+          originalUrl: downloadURL,
+          storagePath: newFilePath,
+          contentType: 'image/jpeg',
+          filename: newFilename,
+          size: outputBuffer.length
+        });
+        console.log(`Updated Firestore document ${docId} with JPEG info`);
+      } else {
+        console.warn("No firestore document found for original HEIC file:", filePath);
+      }
+      
+      // Delete original HEIC file
+      await file.delete().catch(err => console.warn("Failed to delete original HEIC file:", err));
+      console.log(`HEIC conversion finished successfully. Deleted ${filePath}.`);
+      return;
+    } catch (error) {
+      console.error("HEIC conversion failed:", error);
+      // Update document to error state
+      const db = getFirestore();
+      const photosRef = db.collection("photos");
+      const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
+      if (!snapshot.empty) {
+        await photosRef.doc(snapshot.docs[0].id).update({
+          status: 'error_ai'
+        });
+      }
+      return;
+    }
   }
 
   console.log(`Analyzing new image uploaded at ${filePath}`);

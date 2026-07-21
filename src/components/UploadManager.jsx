@@ -50,50 +50,13 @@ export default function UploadManager({ targetFolderId }) {
     setUploads(prev => [...newUploads, ...prev]);
 
     newUploads.forEach(upload => {
-      processAndUploadFile(upload);
+      uploadFile(upload);
     });
   };
 
-  const processAndUploadFile = async (uploadItem) => {
-    let fileToUpload = uploadItem.file;
-    const isHeic = fileToUpload.name.toLowerCase().endsWith('.heic') || fileToUpload.name.toLowerCase().endsWith('.heif');
-    
-    if (isHeic) {
-      setUploads(prev => prev.map(u => 
-        u.id === uploadItem.id ? { ...u, status: 'converting' } : u
-      ));
-      
-      try {
-        const heicModule = await import('heic2any');
-        const heic2any = heicModule.default || heicModule;
-        const convertedBlob = await heic2any({
-          blob: fileToUpload,
-          toType: 'image/jpeg',
-          quality: 0.95
-        });
-        
-        const newName = fileToUpload.name.replace(/\.(heic|heif)$/i, '.jpg');
-        const blobToUse = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-        fileToUpload = new File([blobToUse], newName, { type: 'image/jpeg' });
-        
-        setUploads(prev => prev.map(u => 
-          u.id === uploadItem.id ? { ...u, file: fileToUpload, status: 'uploading' } : u
-        ));
-      } catch (err) {
-        console.error("HEIC conversion failed:", err);
-        setUploads(prev => prev.map(u => 
-          u.id === uploadItem.id ? { ...u, status: 'error' } : u
-        ));
-        return;
-      }
-    }
-
-    uploadFile(uploadItem, fileToUpload);
-  };
-
-  const uploadFile = (uploadItem, fileToUpload) => {
-    const storageRef = ref(storage, `photos/${Date.now()}_${fileToUpload.name}`);
-    const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
+  const uploadFile = (uploadItem) => {
+    const storageRef = ref(storage, `photos/${Date.now()}_${uploadItem.file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, uploadItem.file);
 
     uploadTask.on('state_changed', 
       (snapshot) => {
@@ -113,11 +76,11 @@ export default function UploadManager({ targetFolderId }) {
         
         try {
           await addDoc(collection(db, 'photos'), {
-            filename: fileToUpload.name,
+            filename: uploadItem.file.name,
             originalUrl: downloadURL,
             storagePath: uploadTask.snapshot.ref.fullPath,
-            size: fileToUpload.size,
-            contentType: fileToUpload.type,
+            size: uploadItem.file.size,
+            contentType: uploadItem.file.type || (uploadItem.file.name.toLowerCase().endsWith('.heic') ? 'image/heic' : 'image/jpeg'),
             uploadedAt: serverTimestamp(),
             folderId: targetFolderId || null,
             status: 'processing_ai'
