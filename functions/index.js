@@ -1,5 +1,6 @@
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const admin = require("firebase-admin");
+const { getFirestore } = require("firebase-admin/firestore");
 const { GoogleGenAI, Type } = require("@google/genai");
 
 admin.initializeApp();
@@ -58,7 +59,7 @@ exports.analyzePhoto = onObjectFinalized({
     const result = JSON.parse(response.text());
     
     // Find the firestore document by storagePath
-    const db = admin.firestore();
+    const db = getFirestore();
     const photosRef = db.collection("photos");
     const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
     
@@ -82,7 +83,7 @@ exports.analyzePhoto = onObjectFinalized({
     console.error("Error analyzing image with AI:", error);
     
     // Update document status to error so frontend knows it failed
-    const db = admin.firestore();
+    const db = getFirestore();
     const photosRef = db.collection("photos");
     const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
     if (!snapshot.empty) {
