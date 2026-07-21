@@ -1,4 +1,5 @@
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const { getFirestore } = require("firebase-admin/firestore");
 const { GoogleGenAI, Type } = require("@google/genai");
@@ -169,5 +170,60 @@ exports.analyzePhoto = onObjectFinalized({
         status: 'error_ai'
       });
     }
+  }
+});
+
+exports.cleanupTrash = onSchedule("every 24 hours", async (event) => {
+  console.log("Starting scheduled cleanup of trash items older than 30 days...");
+  const db = getFirestore();
+  
+  // Calculate timestamp representing exactly 30 days ago
+  const thirtyDaysAgo = admin.firestore.Timestamp.fromDate(
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  );
+
+  try {
+    // 1. Fetch deleted photos older than 30 days
+    const photosSnapshot = await db.collection("photos")
+      .where("status", "==", "deleted")
+      .where("deletedAt", "<=", thirtyDaysAgo)
+      .get();
+
+    console.log(`Found ${photosSnapshot.size} expired photos to delete.`);
+    
+    const { getStorage } = require("firebase-admin/storage");
+    const bucket = getStorage().bucket();
+
+    for (const docSnap of photosSnapshot.docs) {
+      const data = docSnap.data();
+      console.log(`Deleting expired photo: ${data.filename} (${docSnap.id})`);
+      
+      // Delete from Storage
+      if (data.storagePath) {
+        const file = bucket.file(data.storagePath);
+        await file.delete().catch((err) => {
+          console.warn(`Could not delete storage file ${data.storagePath}:`, err.message);
+        });
+      }
+      
+      // Delete from Firestore
+      await docSnap.ref.delete();
+    }
+
+    // 2. Fetch deleted folders older than 30 days
+    const foldersSnapshot = await db.collection("folders")
+      .where("status", "==", "deleted")
+      .where("deletedAt", "<=", thirtyDaysAgo)
+      .get();
+
+    console.log(`Found ${foldersSnapshot.size} expired folders to delete.`);
+    for (const docSnap of foldersSnapshot.docs) {
+      console.log(`Deleting expired folder: ${docSnap.data().name} (${docSnap.id})`);
+      await docSnap.ref.delete();
+    }
+    
+    console.log("Scheduled cleanup completed successfully.");
+  } catch (error) {
+    console.error("Scheduled cleanup failed:", error);
   }
 });

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Image as ImageIcon, Folder, Upload, Settings } from 'lucide-react';
+import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2 } from 'lucide-react';
 
 export default function Sidebar() {
   return (
@@ -27,6 +27,9 @@ export default function Sidebar() {
         </NavLink>
         <NavLink to="/upload" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
           <Upload size={18} /> Upload Center
+        </NavLink>
+        <NavLink to="/trash" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
+          <Trash2 size={18} /> Trash Bin
         </NavLink>
 
       </nav>

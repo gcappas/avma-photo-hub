@@ -58,6 +58,7 @@ function App() {
           <Route path="/folders/:folderId" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/all-photos" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/upload" element={<FolderView searchQuery={searchQuery} />} />
+          <Route path="/trash" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/settings" element={<div style={{ padding: '2rem' }}>Settings coming soon...</div>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
