@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { Folder, FileImage, Plus, ChevronRight, X } from 'lucide-react';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { db, storage } from '../firebase';
+import { ref, deleteObject } from 'firebase/storage';
+import { Folder, FileImage, Plus, ChevronRight, X, Trash2 } from 'lucide-react';
 import UploadManager from '../components/UploadManager';
 
 export default function FolderView({ searchQuery }) {
@@ -152,6 +153,46 @@ export default function FolderView({ searchQuery }) {
     }
   };
 
+  const handleDeleteFolder = async (id, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!window.confirm("Are you sure you want to delete this folder? Subfolders and photos inside it will not be deleted but will be moved to the root/orphaned.")) return;
+    
+    try {
+      await deleteDoc(doc(db, 'folders', id));
+    } catch (error) {
+      console.error("Error deleting folder:", error);
+      alert("Failed to delete folder.");
+    }
+  };
+
+  const handleDeletePhoto = async (photo) => {
+    if (!window.confirm("Are you sure you want to delete this photo?")) return;
+
+    try {
+      // 1. Delete document from Firestore
+      await deleteDoc(doc(db, 'photos', photo.id));
+
+      // 2. Delete file from Cloud Storage if storagePath exists
+      if (photo.storagePath) {
+        const storageRef = ref(storage, photo.storagePath);
+        await deleteObject(storageRef).catch((err) => {
+          console.warn("Storage deletion failed or file not found:", err);
+        });
+      }
+      
+      setSelectedPhoto(null);
+    } catch (error) {
+      console.error("Error deleting photo:", error);
+      alert("Failed to delete photo. It will be removed from the UI anyway.");
+      try {
+        await deleteDoc(doc(db, 'photos', photo.id));
+        setSelectedPhoto(null);
+      } catch (err) {}
+    }
+  };
+
   return (
     <div style={{ display: 'flex', gap: '2rem' }}>
       <div style={{ flex: 1 }}>
@@ -190,9 +231,18 @@ export default function FolderView({ searchQuery }) {
             ) : (
               <div className="folder-grid">
                 {filteredFolders.map(f => (
-                  <Link to={`/folders/${f.id}`} key={f.id} className="folder-card">
-                    <Folder size={24} color="var(--primary)" fill="rgba(0, 97, 254, 0.1)" />
-                    <span style={{ fontWeight: 500, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
+                  <Link to={`/folders/${f.id}`} key={f.id} className="folder-card" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden', flex: 1 }}>
+                      <Folder size={24} color="var(--primary)" fill="rgba(0, 97, 254, 0.1)" />
+                      <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
+                    </div>
+                    <button 
+                      onClick={(e) => handleDeleteFolder(f.id, e)} 
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
+                      title="Delete Folder"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </Link>
                 ))}
               </div>
@@ -277,9 +327,18 @@ export default function FolderView({ searchQuery }) {
             </div>
           </div>
           
-          <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => window.open(selectedPhoto.originalUrl, '_blank')}>
-            Download Original
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => window.open(selectedPhoto.originalUrl, '_blank')}>
+              Download Original
+            </button>
+            <button 
+              className="btn-secondary" 
+              style={{ width: '100%', justifyContent: 'center', borderColor: '#ff4d4f', color: '#ff4d4f', gap: '8px' }} 
+              onClick={() => handleDeletePhoto(selectedPhoto)}
+            >
+              <Trash2 size={16} /> Delete Photo
+            </button>
+          </div>
         </div>
       )}
 
