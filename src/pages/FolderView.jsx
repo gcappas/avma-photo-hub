@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
-import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download } from 'lucide-react';
+import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2 } from 'lucide-react';
 import UploadManager from '../components/UploadManager';
 
 export default function FolderView({ searchQuery }) {
@@ -26,6 +26,9 @@ export default function FolderView({ searchQuery }) {
   const [showLightbox, setShowLightbox] = useState(false);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const photoParam = searchParams.get('photo');
 
   // UX improvements state
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
@@ -162,6 +165,23 @@ export default function FolderView({ searchQuery }) {
     fetchActiveFolders();
   }, [showMoveModal, folderId]);
 
+  // Auto-open selected photo on load if URL deep link is provided
+  useEffect(() => {
+    if (photos.length > 0) {
+      if (photoParam) {
+        const matched = photos.find(p => p.id === photoParam);
+        if (matched) {
+          setSelectedPhoto(matched);
+        } else {
+          setSelectedPhoto(null);
+          setSearchParams({});
+        }
+      } else {
+        setSelectedPhoto(null);
+      }
+    }
+  }, [photos, photoParam, setSearchParams]);
+
   // Client-side search and folder filtering
   const filteredPhotos = photos.filter(photo => {
     // 1. Trash Filtering
@@ -219,6 +239,27 @@ export default function FolderView({ searchQuery }) {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const daysLeft = 30 - diffDays;
     return daysLeft > 0 ? `${daysLeft} days left` : 'Expiring soon';
+  };
+
+  const copyToClipboard = async (text, message = "Link copied to clipboard!") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert(message);
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+      // Fallback
+      const input = document.createElement('input');
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      try {
+        document.execCommand('copy');
+        alert(message);
+      } catch (e) {
+        alert("Failed to copy link. Please manually copy from address bar.");
+      }
+      document.body.removeChild(input);
+    }
   };
 
   const handleCreateFolder = async (e) => {
@@ -399,6 +440,7 @@ export default function FolderView({ searchQuery }) {
       }
     } else {
       setSelectedPhoto(photo);
+      setSearchParams({ photo: photo.id });
     }
   };
 
@@ -569,6 +611,19 @@ export default function FolderView({ searchQuery }) {
                   <List size={18} />
                 </button>
               </div>
+            )}
+
+            {!isUploadView && !isTrashView && (
+              <button 
+                className="btn-secondary" 
+                onClick={() => {
+                  const url = window.location.href.split('?')[0];
+                  copyToClipboard(url, "Folder link copied to clipboard!");
+                }}
+                style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', border: '1px solid var(--border)', background: 'white' }}
+              >
+                <Link2 size={16} /> Copy Folder Link
+              </button>
             )}
 
             {!isAllPhotos && !isUploadView && !isTrashView && (
@@ -865,7 +920,7 @@ export default function FolderView({ searchQuery }) {
         <div className="right-panel glass">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Photo Details</h3>
-            <button onClick={() => setSelectedPhoto(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            <button onClick={() => { setSelectedPhoto(null); setSearchParams({}); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
               <X size={20} />
             </button>
           </div>
@@ -973,6 +1028,16 @@ export default function FolderView({ searchQuery }) {
               </>
             ) : (
               <>
+                <button 
+                  className="btn-secondary" 
+                  style={{ width: '100%', justifyContent: 'center', gap: '8px' }} 
+                  onClick={() => {
+                    const url = `${window.location.origin}${location.pathname}?photo=${selectedPhoto.id}`;
+                    copyToClipboard(url, "Photo link copied to clipboard!");
+                  }}
+                >
+                  <Link2 size={16} /> Copy Shareable Link
+                </button>
                 <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => window.open(selectedPhoto.originalUrl, '_blank')}>
                   Download Original
                 </button>
