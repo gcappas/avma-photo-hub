@@ -34,7 +34,11 @@ export default function UploadManager({ targetFolderId }) {
   };
 
   const handleFiles = (files) => {
-    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    const imageFiles = files.filter(f => 
+      f.type.startsWith('image/') || 
+      f.name.toLowerCase().endsWith('.heic') || 
+      f.name.toLowerCase().endsWith('.heif')
+    );
     
     const newUploads = imageFiles.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
@@ -46,16 +50,49 @@ export default function UploadManager({ targetFolderId }) {
     setUploads(prev => [...newUploads, ...prev]);
 
     newUploads.forEach(upload => {
-      uploadFile(upload);
+      processAndUploadFile(upload);
     });
   };
 
-  const uploadFile = (uploadItem) => {
-    // Create a storage reference
-    const storageRef = ref(storage, `photos/${Date.now()}_${uploadItem.file.name}`);
+  const processAndUploadFile = async (uploadItem) => {
+    let fileToUpload = uploadItem.file;
+    const isHeic = fileToUpload.name.toLowerCase().endsWith('.heic') || fileToUpload.name.toLowerCase().endsWith('.heif');
     
-    // Start upload
-    const uploadTask = uploadBytesResumable(storageRef, uploadItem.file);
+    if (isHeic) {
+      setUploads(prev => prev.map(u => 
+        u.id === uploadItem.id ? { ...u, status: 'converting' } : u
+      ));
+      
+      try {
+        const heic2any = (await import('heic2any')).default;
+        const convertedBlob = await heic2any({
+          blob: fileToUpload,
+          toType: 'image/jpeg',
+          quality: 0.95
+        });
+        
+        const newName = fileToUpload.name.replace(/\.(heic|heif)$/i, '.jpg');
+        const blobToUse = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        fileToUpload = new File([blobToUse], newName, { type: 'image/jpeg' });
+        
+        setUploads(prev => prev.map(u => 
+          u.id === uploadItem.id ? { ...u, file: fileToUpload, status: 'uploading' } : u
+        ));
+      } catch (err) {
+        console.error("HEIC conversion failed:", err);
+        setUploads(prev => prev.map(u => 
+          u.id === uploadItem.id ? { ...u, status: 'error' } : u
+        ));
+        return;
+      }
+    }
+
+    uploadFile(uploadItem, fileToUpload);
+  };
+
+  const uploadFile = (uploadItem, fileToUpload) => {
+    const storageRef = ref(storage, `photos/${Date.now()}_${fileToUpload.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
 
     uploadTask.on('state_changed', 
       (snapshot) => {
@@ -71,21 +108,18 @@ export default function UploadManager({ targetFolderId }) {
         ));
       }, 
       async () => {
-        // Upload completed
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
         
-        // Save to firestore with initial 'processing' state.
-        // The Cloud Function will pick this up, run AI, and update the document.
         try {
           await addDoc(collection(db, 'photos'), {
-            filename: uploadItem.file.name,
+            filename: fileToUpload.name,
             originalUrl: downloadURL,
             storagePath: uploadTask.snapshot.ref.fullPath,
-            size: uploadItem.file.size,
-            contentType: uploadItem.file.type,
+            size: fileToUpload.size,
+            contentType: fileToUpload.type,
             uploadedAt: serverTimestamp(),
             folderId: targetFolderId || null,
-            status: 'processing_ai' // Cloud function will change this to 'ready' and add tags
+            status: 'processing_ai'
           });
 
           setUploads(prev => prev.map(u => 
@@ -118,7 +152,7 @@ export default function UploadManager({ targetFolderId }) {
           type="file" 
           id="fileUpload" 
           multiple 
-          accept="image/*" 
+          accept="image/*,.heic,.heif" 
           onChange={handleFileInput} 
           style={{ display: 'none' }} 
         />
@@ -148,7 +182,7 @@ export default function UploadManager({ targetFolderId }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
                     <span style={{ fontWeight: 500 }}>{u.file.name}</span>
                     <span style={{ color: u.status === 'error' ? 'red' : 'var(--text-muted)' }}>
-                      {u.status === 'completed' ? 'Done' : u.status === 'error' ? 'Failed' : `${Math.round(u.progress)}%`}
+                      {u.status === 'completed' ? 'Done' : u.status === 'error' ? 'Failed' : u.status === 'converting' ? 'Converting HEIC...' : `${Math.round(u.progress)}%`}
                     </span>
                   </div>
                   <div style={{ width: '100%', height: '4px', background: 'rgba(0,0,0,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
