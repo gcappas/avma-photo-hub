@@ -44,17 +44,20 @@ exports.analyzePhoto = onObjectFinalized({
       const newFilePath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
       const newFile = bucket.file(newFilePath);
       
+      const crypto = require("crypto");
+      const token = crypto.randomUUID();
+
       await newFile.save(outputBuffer, {
         metadata: {
-          contentType: 'image/jpeg'
+          contentType: 'image/jpeg',
+          metadata: {
+            firebaseStorageDownloadTokens: token
+          }
         }
       });
       
-      // Get a signed URL far in the future
-      const [downloadURL] = await newFile.getSignedUrl({
-        action: 'read',
-        expires: '03-09-2491'
-      });
+      // Construct standard Firebase Storage download URL
+      const downloadURL = `https://firebasestorage.googleapis.com/v0/b/${fileBucket}/o/${encodeURIComponent(newFilePath)}?alt=media&token=${token}`;
       
       // Update the firestore document
       const db = getFirestore();
