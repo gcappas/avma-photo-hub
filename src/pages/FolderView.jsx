@@ -21,6 +21,7 @@ export default function FolderView({ searchQuery }) {
   const [newFolderName, setNewFolderName] = useState('');
   
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [showLightbox, setShowLightbox] = useState(false);
 
   // Fetch current folder details & build breadcrumbs
   useEffect(() => {
@@ -218,7 +219,7 @@ export default function FolderView({ searchQuery }) {
                       <FileImage size={32} />
                     </div>
                   )}
-                  {photo.status === 'processing' && (
+                  {(photo.status === 'processing' || photo.status === 'processing_ai') && (
                     <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
                       AI Analyzing...
                     </div>
@@ -248,8 +249,15 @@ export default function FolderView({ searchQuery }) {
             </button>
           </div>
           
-          <div style={{ borderRadius: '8px', overflow: 'hidden', marginBottom: '1rem', background: '#eee' }}>
-            {selectedPhoto.originalUrl && <img src={selectedPhoto.originalUrl} alt="Preview" style={{ width: '100%', display: 'block' }} />}
+          <div 
+            onClick={() => setShowLightbox(true)}
+            style={{ borderRadius: '8px', overflow: 'hidden', marginBottom: '1rem', background: '#eee', cursor: 'pointer', position: 'relative' }}
+            title="Click to view full screen"
+          >
+            {selectedPhoto.originalUrl && <img src={selectedPhoto.originalUrl} alt="Preview" style={{ width: '100%', display: 'block', transition: 'filter 0.2s' }} />}
+            <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+              Click to Zoom
+            </div>
           </div>
           
           <div style={{ marginBottom: '1.5rem' }}>
@@ -294,6 +302,28 @@ export default function FolderView({ searchQuery }) {
                 <button type="submit" className="btn">Create Folder</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Lightbox Modal for Fullscreen View */}
+      {showLightbox && selectedPhoto && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowLightbox(false)} 
+          style={{ background: 'rgba(0,0,0,0.9)', zIndex: 2000 }}
+        >
+          <button 
+            onClick={() => setShowLightbox(false)} 
+            style={{ position: 'absolute', top: '20px', right: '20px', background: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 2001 }}
+          >
+            <X size={24} />
+          </button>
+          <div style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+            <img 
+              src={selectedPhoto.originalUrl} 
+              alt="Fullscreen View" 
+              style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }} 
+            />
           </div>
         </div>
       )}

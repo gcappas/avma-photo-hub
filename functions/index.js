@@ -25,10 +25,9 @@ exports.analyzePhoto = onObjectFinalized({
   // Initialize the Google Gen AI client inside the function 
   // so it doesn't crash during local deployment analysis when credentials aren't present
   const ai = new GoogleGenAI({
-    vertexai: { 
-      project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
-      location: "us-east1" 
-    }
+    vertexai: true,
+    project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
+    location: "us-east1"
   });
   
   try {
