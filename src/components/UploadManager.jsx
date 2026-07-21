@@ -4,7 +4,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { storage, db } from '../firebase';
 import { UploadCloud, FileImage, X } from 'lucide-react';
 
-export default function UploadManager() {
+export default function UploadManager({ targetFolderId }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploads, setUploads] = useState([]); // { file, progress, status, id }
 
@@ -84,6 +84,7 @@ export default function UploadManager() {
             size: uploadItem.file.size,
             contentType: uploadItem.file.type,
             uploadedAt: serverTimestamp(),
+            folderId: targetFolderId || null,
             status: 'processing_ai' // Cloud function will change this to 'ready' and add tags
           });
 
@@ -103,19 +104,11 @@ export default function UploadManager() {
   return (
     <div style={{ marginBottom: '3rem' }}>
       <div 
-        className={`glass ${isDragging ? 'dragging' : ''}`}
+        className={`drop-zone ${isDragging ? 'active' : ''}`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        style={{
-          padding: '3rem',
-          textAlign: 'center',
-          border: isDragging ? '2px dashed var(--primary)' : '2px dashed var(--border)',
-          backgroundColor: isDragging ? 'rgba(0, 119, 182, 0.05)' : 'var(--surface)',
-          transition: 'all 0.3s ease',
-          cursor: 'pointer'
-        }}
         onClick={() => document.getElementById('fileUpload').click()}
       >
         <UploadCloud size={48} color={isDragging ? 'var(--primary)' : 'var(--text-muted)'} style={{ marginBottom: '1rem' }} />
@@ -137,7 +130,16 @@ export default function UploadManager() {
       {/* Upload Progress List */}
       {uploads.length > 0 && (
         <div style={{ marginTop: '1.5rem' }}>
-          <h4 style={{ marginBottom: '1rem' }}>Upload Queue</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h4 style={{ margin: 0 }}>Upload Queue</h4>
+            <button 
+              className="btn-secondary" 
+              style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+              onClick={() => setUploads([])}
+            >
+              <X size={14} /> Clear Queue
+            </button>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {uploads.map(u => (
               <div key={u.id} className="glass" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>

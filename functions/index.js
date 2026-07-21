@@ -4,8 +4,7 @@ const { GoogleGenAI, Type } = require("@google/genai");
 
 admin.initializeApp();
 
-// Initialize the Google Gen AI client
-const ai = new GoogleGenAI({});
+
 
 exports.analyzePhoto = onObjectFinalized({ 
   // bucket: "avma-photo-hub-2026.appspot.com", // Configure specific bucket if needed
@@ -22,6 +21,15 @@ exports.analyzePhoto = onObjectFinalized({
   }
 
   console.log(`Analyzing new image uploaded at ${filePath}`);
+  
+  // Initialize the Google Gen AI client inside the function 
+  // so it doesn't crash during local deployment analysis when credentials aren't present
+  const ai = new GoogleGenAI({
+    vertexai: { 
+      project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
+      location: "us-east1" 
+    }
+  });
   
   try {
     const response = await ai.models.generateContent({

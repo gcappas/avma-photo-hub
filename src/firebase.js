@@ -1,16 +1,16 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, OAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getAuth, OAuthProvider, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 // TODO: Replace with your actual Firebase project config after running `firebase init`
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyC1Jo9eA9p70i5D-hp7c7PSUqsoNJanbPs",
+  authDomain: "avma-photo-hub-2026.firebaseapp.com",
+  projectId: "avma-photo-hub-2026",
+  storageBucket: "avma-photo-hub-2026.firebasestorage.app",
+  messagingSenderId: "127021636361",
+  appId: "1:127021636361:web:bffc3e1c129b855367d1d8"
 };
 
 export const app = initializeApp(firebaseConfig);
@@ -24,3 +24,5 @@ microsoftProvider.setCustomParameters({
   prompt: 'consent',
   tenant: 'common' // Use specific tenant ID if restricting to a single organization
 });
+
+
