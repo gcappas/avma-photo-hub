@@ -65,8 +65,8 @@ a {
 
 .sidebar {
   width: 260px;
-  background-color: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
+  background-color: var(--primary);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
   padding: 1.5rem 1rem;
@@ -79,19 +79,20 @@ a {
   gap: 12px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  color: var(--text-dark);
+  color: rgba(255, 255, 255, 0.75);
   font-weight: 500;
   transition: all 0.2s ease;
   margin-bottom: 4px;
 }
 
 .sidebar-nav-link:hover {
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
 }
 
 .sidebar-nav-link.active {
-  background-color: #EAF6F7;
-  color: var(--teal);
+  background-color: var(--accent);
+  color: #FFFFFF;
 }
 
 .main-content {

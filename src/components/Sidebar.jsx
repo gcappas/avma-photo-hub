@@ -9,7 +9,7 @@ export default function Sidebar() {
       </div>
 
       <nav style={{ flex: 1 }}>
-        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', padding: '0 12px' }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', padding: '0 12px' }}>
           Library
         </div>
         
