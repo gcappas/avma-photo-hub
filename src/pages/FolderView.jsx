@@ -189,32 +189,44 @@ export default function FolderView({ searchQuery }) {
 
   // Client-side search and folder filtering memoized for performance
   const filteredPhotos = useMemo(() => {
+    const rawQuery = (searchQuery || '').trim().toLowerCase();
+    const terms = rawQuery.split(/\s+/).filter(Boolean);
+
     return photos.filter(photo => {
       // 1. Trash Filtering
       if (isTrashView) {
         if (photo.status !== 'deleted') return false;
       } else {
         if (photo.status === 'deleted') return false;
-        
-        // Folder Filtering (when global searchQuery is active)
-        if (!isAllPhotos && searchQuery) {
+
+        // Folder Filtering (only when NOT searching)
+        if (!isAllPhotos && terms.length === 0) {
           const parentId = folderId || null;
           const photoFolderId = photo.folderId || null;
           if (photoFolderId !== parentId) return false;
         }
       }
 
-      // 2. Search Filtering
-      if (!searchQuery) return true;
-      const q = searchQuery.toLowerCase();
-      const tagsMatch = photo.tags?.some(tag => tag.toLowerCase().includes(q));
-      const descMatch = photo.description?.toLowerCase().includes(q);
-      const nameMatch = photo.filename?.toLowerCase().includes(q);
-      return tagsMatch || descMatch || nameMatch;
+      // 2. Search Query Filtering
+      if (terms.length === 0) return true;
+
+      const filename = (photo.filename || '').toLowerCase();
+      const description = (photo.description || '').toLowerCase();
+      const tags = (photo.tags || []).map(t => t.toLowerCase());
+
+      return terms.every(term => {
+        const inFilename = filename.includes(term);
+        const inDesc = description.includes(term);
+        const inTags = tags.some(t => t.includes(term) || term.includes(t));
+        return inFilename || inDesc || inTags;
+      });
     });
   }, [photos, isTrashView, isAllPhotos, folderId, searchQuery]);
 
   const filteredFolders = useMemo(() => {
+    const rawQuery = (searchQuery || '').trim().toLowerCase();
+    const terms = rawQuery.split(/\s+/).filter(Boolean);
+
     return folders.filter(f => {
       // 1. Trash Filtering
       if (isTrashView) {
@@ -223,18 +235,21 @@ export default function FolderView({ searchQuery }) {
         if (f.status === 'deleted') return false;
       }
 
-      // 2. Search Filtering
-      if (!searchQuery) return true;
-      return f.name.toLowerCase().includes(searchQuery.toLowerCase());
+      if (terms.length === 0) return true;
+      const folderName = f.name.toLowerCase();
+      return terms.every(term => folderName.includes(term));
     });
   }, [folders, isTrashView, searchQuery]);
 
   // Highlight matching search terms helper
   const highlightText = (text, search) => {
     if (!search || !text) return text;
-    const parts = text.split(new RegExp(`(${search})`, 'gi'));
+    const cleanSearch = search.trim();
+    if (!cleanSearch) return text;
+    const escaped = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
     return parts.map((part, index) => 
-      part.toLowerCase() === search.toLowerCase() 
+      part.toLowerCase() === cleanSearch.toLowerCase() 
         ? <mark key={index} style={{ backgroundColor: '#ffeb3b', color: '#000000', padding: '1px 3px', borderRadius: '2px' }}>{part}</mark> 
         : part
     );
