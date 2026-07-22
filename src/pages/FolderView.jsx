@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, limit, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2, Loader2 } from 'lucide-react';
@@ -133,9 +133,9 @@ export default function FolderView({ searchQuery }) {
 
     let q;
     if (isTrashView) {
-      q = query(collection(db, 'photos'), where('status', '==', 'deleted'));
+      q = query(collection(db, 'photos'), where('status', '==', 'deleted'), limit(100));
     } else if (isAllPhotos || searchQuery) {
-      q = query(collection(db, 'photos'));
+      q = query(collection(db, 'photos'), limit(150));
     } else {
       const parentId = folderId || null;
       q = query(collection(db, 'photos'), where('folderId', '==', parentId));

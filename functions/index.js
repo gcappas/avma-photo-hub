@@ -103,6 +103,13 @@ exports.analyzePhoto = onObjectFinalized({
 
   console.log(`Analyzing new image uploaded at ${filePath}`);
   
+  const db = getFirestore();
+  const photosRef = db.collection("photos");
+  const existingSnap = await photosRef.where("storagePath", "==", filePath).limit(1).get();
+  if (!existingSnap.empty && existingSnap.docs[0].data().status === 'ready') {
+    return console.log(`Photo ${filePath} is already analyzed and ready. Skipping redundant work.`);
+  }
+
   // Initialize the Google Gen AI client inside the function 
   // so it doesn't crash during local deployment analysis when credentials aren't present
   const ai = new GoogleGenAI({
