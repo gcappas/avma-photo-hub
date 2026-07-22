@@ -78,9 +78,31 @@ export default function PhotoGallery() {
                   </div>
                 )}
                 <div className="img-actions">
-                  <a href={photo.originalUrl} target="_blank" rel="noopener noreferrer" className="btn" style={{ padding: '8px' }}>
+                  <button 
+                    className="btn" 
+                    style={{ padding: '8px' }}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!photo.originalUrl) return;
+                      try {
+                        const res = await fetch(photo.originalUrl);
+                        const blob = await res.blob();
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        a.download = photo.filename || 'photo.jpg';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+                      } catch (err) {
+                        window.open(photo.originalUrl, '_blank');
+                      }
+                    }}
+                    title="Download Photo"
+                  >
                     <Download size={16} />
-                  </a>
+                  </button>
                 </div>
               </div>
               <div className="photo-info">

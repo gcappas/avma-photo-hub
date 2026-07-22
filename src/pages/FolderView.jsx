@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate, useLocation, useSearchParams } from 'reac
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
-import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2 } from 'lucide-react';
+import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2, Loader2 } from 'lucide-react';
 import UploadManager from '../components/UploadManager';
 
 export default function FolderView({ searchQuery }) {
@@ -34,6 +34,7 @@ export default function FolderView({ searchQuery }) {
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [allFoldersList, setAllFoldersList] = useState([]);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Fetch current folder details & build recursive breadcrumbs
   useEffect(() => {
@@ -519,17 +520,41 @@ export default function FolderView({ searchQuery }) {
     }
   };
 
-  const handleDownloadSelected = () => {
-    const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(p.id));
-    selectedPhotos.forEach(p => {
+  const downloadSinglePhoto = async (photo) => {
+    if (!photo || !photo.originalUrl) return;
+    try {
+      const response = await fetch(photo.originalUrl);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = p.originalUrl;
-      link.target = '_blank';
-      link.download = p.filename || 'download';
+      link.href = blobUrl;
+      link.download = photo.filename || 'photo.jpg';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    });
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err) {
+      console.warn("Blob fetch failed, using direct link download fallback:", err);
+      const link = document.createElement('a');
+      link.href = photo.originalUrl;
+      link.target = '_blank';
+      link.download = photo.filename || 'download';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleDownloadSelected = async () => {
+    const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(p.id));
+    if (selectedPhotos.length === 0) return;
+    setIsDownloading(true);
+    for (const photo of selectedPhotos) {
+      await downloadSinglePhoto(photo);
+      await new Promise(r => setTimeout(r, 400));
+    }
+    setIsDownloading(false);
     setIsSelectMode(false);
     setSelectedPhotoIds([]);
   };
@@ -718,10 +743,18 @@ export default function FolderView({ searchQuery }) {
                           <button 
                             className="btn-secondary" 
                             onClick={handleDownloadSelected}
-                            disabled={selectedPhotoIds.length === 0}
+                            disabled={selectedPhotoIds.length === 0 || isDownloading}
                             style={{ padding: '6px 12px', fontSize: '0.85rem', gap: '4px' }}
                           >
-                            <Download size={14} /> Download Selected
+                            {isDownloading ? (
+                              <>
+                                <Loader2 size={14} className="spinner" style={{ animation: 'spin 1s linear infinite' }} /> Downloading...
+                              </>
+                            ) : (
+                              <>
+                                <Download size={14} /> Download Selected
+                              </>
+                            )}
                           </button>
                           <button 
                             className="btn-secondary" 
@@ -1038,8 +1071,23 @@ export default function FolderView({ searchQuery }) {
                 >
                   <Link2 size={16} /> Copy Shareable Link
                 </button>
-                <button className="btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => window.open(selectedPhoto.originalUrl, '_blank')}>
-                  Download Original
+                <button 
+                  className="btn" 
+                  style={{ width: '100%', justifyContent: 'center' }} 
+                  disabled={isDownloading}
+                  onClick={async () => {
+                    setIsDownloading(true);
+                    await downloadSinglePhoto(selectedPhoto);
+                    setIsDownloading(false);
+                  }}
+                >
+                  {isDownloading ? (
+                    <>
+                      <Loader2 size={16} className="spinner" style={{ animation: 'spin 1s linear infinite', marginRight: '6px' }} /> Downloading...
+                    </>
+                  ) : (
+                    'Download Original'
+                  )}
                 </button>
                 <button 
                   className="btn-secondary" 
