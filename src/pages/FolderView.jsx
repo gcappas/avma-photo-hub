@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '../firebase';
@@ -124,12 +124,23 @@ export default function FolderView({ searchQuery }) {
     return unsubscribe;
   }, [folderId, isAllPhotos, isUploadView, isTrashView]);
 
-  // Fetch photos
+  // Fetch photos - scoped by folder or view mode for high performance
   useEffect(() => {
-    if (isUploadView) return;
-    
-    // In our simplified setup, we listen to all photos and filter client-side
-    const q = query(collection(db, 'photos'));
+    if (isUploadView) {
+      setPhotos([]);
+      return;
+    }
+
+    let q;
+    if (isTrashView) {
+      q = query(collection(db, 'photos'), where('status', '==', 'deleted'));
+    } else if (isAllPhotos || searchQuery) {
+      q = query(collection(db, 'photos'));
+    } else {
+      const parentId = folderId || null;
+      q = query(collection(db, 'photos'), where('folderId', '==', parentId));
+    }
+
     const unsubscribe = onSnapshot(q, 
       (snapshot) => {
         const photoList = snapshot.docs.map(doc => ({
@@ -144,7 +155,7 @@ export default function FolderView({ searchQuery }) {
     );
 
     return unsubscribe;
-  }, [isUploadView]);
+  }, [folderId, isAllPhotos, isUploadView, isTrashView, searchQuery]);
 
   // Fetch all active folders when move modal opens
   useEffect(() => {
@@ -168,58 +179,55 @@ export default function FolderView({ searchQuery }) {
 
   // Auto-open selected photo on load if URL deep link is provided
   useEffect(() => {
-    if (photos.length > 0) {
-      if (photoParam) {
-        const matched = photos.find(p => p.id === photoParam);
-        if (matched) {
-          setSelectedPhoto(matched);
-        } else {
-          setSelectedPhoto(null);
-          setSearchParams({});
-        }
+    if (photoParam && photos.length > 0) {
+      const matched = photos.find(p => p.id === photoParam);
+      if (matched) {
+        setSelectedPhoto(matched);
+      }
+    }
+  }, [photoParam, photos]);
+
+  // Client-side search and folder filtering memoized for performance
+  const filteredPhotos = useMemo(() => {
+    return photos.filter(photo => {
+      // 1. Trash Filtering
+      if (isTrashView) {
+        if (photo.status !== 'deleted') return false;
       } else {
-        setSelectedPhoto(null);
+        if (photo.status === 'deleted') return false;
+        
+        // Folder Filtering (when global searchQuery is active)
+        if (!isAllPhotos && searchQuery) {
+          const parentId = folderId || null;
+          const photoFolderId = photo.folderId || null;
+          if (photoFolderId !== parentId) return false;
+        }
       }
-    }
-  }, [photos, photoParam, setSearchParams]);
 
-  // Client-side search and folder filtering
-  const filteredPhotos = photos.filter(photo => {
-    // 1. Trash Filtering
-    if (isTrashView) {
-      if (photo.status !== 'deleted') return false;
-    } else {
-      if (photo.status === 'deleted') return false;
-      
-      // Folder Filtering
-      if (!isAllPhotos) {
-        const parentId = folderId || null;
-        const photoFolderId = photo.folderId || null;
-        if (photoFolderId !== parentId) return false;
+      // 2. Search Filtering
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      const tagsMatch = photo.tags?.some(tag => tag.toLowerCase().includes(q));
+      const descMatch = photo.description?.toLowerCase().includes(q);
+      const nameMatch = photo.filename?.toLowerCase().includes(q);
+      return tagsMatch || descMatch || nameMatch;
+    });
+  }, [photos, isTrashView, isAllPhotos, folderId, searchQuery]);
+
+  const filteredFolders = useMemo(() => {
+    return folders.filter(f => {
+      // 1. Trash Filtering
+      if (isTrashView) {
+        if (f.status !== 'deleted') return false;
+      } else {
+        if (f.status === 'deleted') return false;
       }
-    }
 
-    // 2. Search Filtering
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    const tagsMatch = photo.tags?.some(tag => tag.toLowerCase().includes(q));
-    const descMatch = photo.description?.toLowerCase().includes(q);
-    const nameMatch = photo.filename?.toLowerCase().includes(q);
-    return tagsMatch || descMatch || nameMatch;
-  });
-
-  const filteredFolders = folders.filter(f => {
-    // 1. Trash Filtering
-    if (isTrashView) {
-      if (f.status !== 'deleted') return false;
-    } else {
-      if (f.status === 'deleted') return false;
-    }
-
-    // 2. Search Filtering
-    if (!searchQuery) return true;
-    return f.name.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+      // 2. Search Filtering
+      if (!searchQuery) return true;
+      return f.name.toLowerCase().includes(searchQuery.toLowerCase());
+    });
+  }, [folders, isTrashView, searchQuery]);
 
   // Highlight matching search terms helper
   const highlightText = (text, search) => {
