@@ -10,9 +10,9 @@ admin.initializeApp();
 
 
 exports.analyzePhoto = onObjectFinalized({ 
-  // bucket: "avma-photo-hub-2026.appspot.com", // Configure specific bucket if needed
   memory: "1GiB",
-  timeoutSeconds: 300
+  timeoutSeconds: 90,
+  maxInstances: 5
 }, async (event) => {
   const fileBucket = event.data.bucket;
   const filePath = event.data.name;
@@ -236,7 +236,13 @@ exports.cleanupTrash = onSchedule("every 24 hours", async (event) => {
   }
 });
 
-exports.downloadPhoto = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+exports.downloadPhoto = onRequest({ 
+  cors: true, 
+  region: "us-east1",
+  memory: "512MiB",
+  timeoutSeconds: 30,
+  maxInstances: 10
+}, async (req, res) => {
   const photoUrl = req.query.url;
   const filename = req.query.filename || "photo.jpg";
   
