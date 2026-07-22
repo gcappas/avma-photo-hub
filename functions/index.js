@@ -1,5 +1,6 @@
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const { getFirestore } = require("firebase-admin/firestore");
 const { GoogleGenAI, Type } = require("@google/genai");
@@ -225,5 +226,28 @@ exports.cleanupTrash = onSchedule("every 24 hours", async (event) => {
     console.log("Scheduled cleanup completed successfully.");
   } catch (error) {
     console.error("Scheduled cleanup failed:", error);
+  }
+});
+
+exports.downloadPhoto = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+  const photoUrl = req.query.url;
+  const filename = req.query.filename || "photo.jpg";
+  
+  if (!photoUrl) {
+    return res.status(400).send("Missing url parameter");
+  }
+
+  try {
+    const fetchRes = await fetch(photoUrl);
+    if (!fetchRes.ok) throw new Error(`HTTP ${fetchRes.status}`);
+    const buffer = Buffer.from(await fetchRes.arrayBuffer());
+    
+    res.setHeader("Content-Type", fetchRes.headers.get("content-type") || "image/jpeg");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(buffer);
+  } catch (err) {
+    console.error("Error in downloadPhoto proxy:", err);
+    res.status(500).send("Download failed");
   }
 });

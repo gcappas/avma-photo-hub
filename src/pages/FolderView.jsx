@@ -522,6 +522,9 @@ export default function FolderView({ searchQuery }) {
 
   const downloadSinglePhoto = async (photo) => {
     if (!photo || !photo.originalUrl) return;
+    const filename = photo.filename || 'photo.jpg';
+    
+    // 1. Try direct fetch + blob download (fastest)
     try {
       const response = await fetch(photo.originalUrl);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -529,21 +532,24 @@ export default function FolderView({ searchQuery }) {
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = photo.filename || 'photo.jpg';
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      return;
     } catch (err) {
-      console.warn("Blob fetch failed, using direct link download fallback:", err);
-      const link = document.createElement('a');
-      link.href = photo.originalUrl;
-      link.target = '_blank';
-      link.download = photo.filename || 'download';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      console.warn("Direct blob fetch failed, falling back to download proxy:", err);
     }
+
+    // 2. Fallback: Trigger download via backend Cloud Function proxy with Content-Disposition: attachment
+    const proxyUrl = `https://us-east1-avma-photo-hub-2026.cloudfunctions.net/downloadPhoto?url=${encodeURIComponent(photo.originalUrl)}&filename=${encodeURIComponent(filename)}`;
+    const link = document.createElement('a');
+    link.href = proxyUrl;
+    link.target = '_self';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleDownloadSelected = async () => {
