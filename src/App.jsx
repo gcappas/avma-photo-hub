@@ -3,7 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, signInWithPopup } from 'firebase/auth';
 import { auth, microsoftProvider } from './firebase';
 import DashboardLayout from './layouts/DashboardLayout';
+import DashboardHome from './pages/DashboardHome';
 import FolderView from './pages/FolderView';
+import AllPhotosView from './pages/AllPhotosView';
+import UploadCenterView from './pages/UploadCenterView';
 import './index.css';
 
 function App() {
@@ -51,11 +54,11 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<DashboardLayout user={user} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />}>
-          <Route path="/" element={<FolderView searchQuery={searchQuery} />} />
+          <Route path="/" element={<DashboardHome searchQuery={searchQuery} />} />
           <Route path="/folders" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/folders/:folderId" element={<FolderView searchQuery={searchQuery} />} />
-          <Route path="/all-photos" element={<FolderView searchQuery={searchQuery} />} />
-          <Route path="/upload" element={<FolderView searchQuery={searchQuery} />} />
+          <Route path="/all-photos" element={<AllPhotosView searchQuery={searchQuery} />} />
+          <Route path="/upload" element={<UploadCenterView />} />
           <Route path="/trash" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/settings" element={<div style={{ padding: '2rem' }}>Settings coming soon...</div>} />
           <Route path="*" element={<Navigate to="/" replace />} />
