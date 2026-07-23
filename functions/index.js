@@ -347,3 +347,191 @@ exports.repairStuckPhotos = onRequest({ cors: true, region: "us-east1" }, async 
     res.status(500).send({ error: err.message });
   }
 });
+
+// GET endpoint: Fetch current month AI Image Generation Usage & Quota (100 images / month limit)
+exports.getAiUsage = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+  const db = getFirestore();
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  try {
+    const usageDocRef = db.collection("ai_usage").doc(currentMonthKey);
+    const usageSnap = await usageDocRef.get();
+    
+    let usedCount = 0;
+    if (usageSnap.exists) {
+      usedCount = usageSnap.data().count || 0;
+    }
+
+    res.send({
+      success: true,
+      month: currentMonthKey,
+      usedThisMonth: usedCount,
+      monthlyLimit: 100,
+      remaining: Math.max(0, 100 - usedCount)
+    });
+  } catch (err) {
+    console.error("Error fetching AI usage:", err);
+    res.status(500).send({ error: err.message });
+  }
+});
+
+// POST endpoint: Generate high-resolution image via Google Imagen 3 with 100 images/month quota
+exports.generateAiImage = onRequest({ cors: true, region: "us-east1", timeoutSeconds: 120, memory: "1GiB" }, async (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(405).send({ error: 'Method not allowed. Use POST.' });
+  }
+
+  const { prompt, aspectRatio = '1:1', targetFolderId } = req.body || {};
+
+  if (!prompt || !prompt.trim()) {
+    return res.status(400).send({ error: 'A prompt description is required.' });
+  }
+
+  const db = getFirestore();
+  const { FieldValue } = require("firebase-admin/firestore");
+  const { getStorage } = require("firebase-admin/storage");
+  const crypto = require("crypto");
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const MONTHLY_LIMIT = 100;
+
+  try {
+    // 1. Enforce 100 images / month quota
+    const usageDocRef = db.collection("ai_usage").doc(currentMonthKey);
+    const usageSnap = await usageDocRef.get();
+    const currentCount = usageSnap.exists ? (usageSnap.data().count || 0) : 0;
+
+    if (currentCount >= MONTHLY_LIMIT) {
+      return res.status(429).send({
+        error: `Monthly AI generation limit reached (${MONTHLY_LIMIT}/${MONTHLY_LIMIT} images used for ${currentMonthKey}). Limits reset on the 1st of next month.`,
+        usedThisMonth: currentCount,
+        monthlyLimit: MONTHLY_LIMIT
+      });
+    }
+
+    // 2. Resolve destination folder (Default to system folder "AI Generated Photos")
+    let folderId = targetFolderId || null;
+    if (!folderId) {
+      const foldersRef = db.collection("folders");
+      const folderSnap = await foldersRef.where("name", "==", "AI Generated Photos").where("status", "!=", "deleted").limit(1).get();
+      if (!folderSnap.empty) {
+        folderId = folderSnap.docs[0].id;
+      } else {
+        // Create the system folder automatically
+        const newFolderRef = await foldersRef.add({
+          name: "AI Generated Photos",
+          parentId: null,
+          status: "active",
+          createdAt: FieldValue.serverTimestamp()
+        });
+        folderId = newFolderRef.id;
+        console.log(`Created system folder 'AI Generated Photos' (${folderId})`);
+      }
+    }
+
+    // 3. Initialize Vertex AI client & call Imagen 3
+    console.log(`Generating AI image for prompt: "${prompt}" (Aspect Ratio: ${aspectRatio})`);
+    const ai = new GoogleGenAI({
+      vertexai: true,
+      project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
+      location: "us-east1"
+    });
+
+    let imageBytesBase64 = null;
+    try {
+      const aiResponse = await ai.models.generateImages({
+        model: 'imagen-3.0-generate-002',
+        prompt: prompt.trim(),
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: aspectRatio
+        }
+      });
+
+      if (aiResponse.generatedImages && aiResponse.generatedImages.length > 0) {
+        imageBytesBase64 = aiResponse.generatedImages[0].image.imageBytes;
+      }
+    } catch (primaryErr) {
+      console.warn("Imagen 3 primary model error, trying imagen-3.0-fast-generate-001 fallback:", primaryErr.message);
+      const fallbackResponse = await ai.models.generateImages({
+        model: 'imagen-3.0-fast-generate-001',
+        prompt: prompt.trim(),
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: aspectRatio
+        }
+      });
+      if (fallbackResponse.generatedImages && fallbackResponse.generatedImages.length > 0) {
+        imageBytesBase64 = fallbackResponse.generatedImages[0].image.imageBytes;
+      }
+    }
+
+    if (!imageBytesBase64) {
+      throw new Error("No image data returned from Google Imagen 3 AI model.");
+    }
+
+    // 4. Save generated JPEG to Firebase Storage
+    const imageBuffer = Buffer.from(imageBytesBase64, 'base64');
+    const bucket = getStorage().bucket("avma-photo-hub-2026.firebasestorage.app");
+    const photoId = `ai_gen_${crypto.randomUUID()}`;
+    const storagePath = `photos/${photoId}.jpg`;
+    const token = crypto.randomUUID();
+    const storageFile = bucket.file(storagePath);
+
+    await storageFile.save(imageBuffer, {
+      metadata: {
+        contentType: 'image/jpeg',
+        metadata: { firebaseStorageDownloadTokens: token }
+      }
+    });
+
+    const downloadURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`;
+    const filename = `AI_Gen_${Date.now()}.jpg`;
+
+    // 5. Create Firestore photo record
+    const photoData = {
+      filename,
+      folderId,
+      storagePath,
+      originalUrl: downloadURL,
+      contentType: 'image/jpeg',
+      size: imageBuffer.length,
+      description: `AI Generated: ${prompt.trim()}`,
+      tags: ['ai-generated', 'imagen-3', 'studio'],
+      status: 'ready',
+      isAiGenerated: true,
+      createdAt: FieldValue.serverTimestamp()
+    };
+
+    const photoDocRef = await db.collection("photos").add(photoData);
+
+    // 6. Increment monthly usage counter atomically
+    await usageDocRef.set({
+      count: FieldValue.increment(1),
+      lastUpdated: FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    const newCount = currentCount + 1;
+    console.log(`Successfully generated AI photo ${photoDocRef.id}. Used ${newCount}/${MONTHLY_LIMIT} this month.`);
+
+    res.send({
+      success: true,
+      photo: {
+        id: photoDocRef.id,
+        ...photoData,
+        createdAt: new Date().toISOString()
+      },
+      usedThisMonth: newCount,
+      monthlyLimit: MONTHLY_LIMIT,
+      remaining: Math.max(0, MONTHLY_LIMIT - newCount)
+    });
+
+  } catch (err) {
+    console.error("AI Image Generation failed:", err);
+    res.status(500).send({ error: err.message || 'Image generation failed.' });
+  }
+});

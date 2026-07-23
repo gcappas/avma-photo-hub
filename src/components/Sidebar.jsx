@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2 } from 'lucide-react';
+import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2, Sparkles } from 'lucide-react';
 import pkg from '../../package.json';
 
 export default function Sidebar() {
@@ -25,6 +25,9 @@ export default function Sidebar() {
         </NavLink>
         <NavLink to="/upload" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
           <Upload size={18} /> Upload Center
+        </NavLink>
+        <NavLink to="/generate" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
+          <Sparkles size={18} /> AI Generator
         </NavLink>
         <NavLink to="/trash" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
           <Trash2 size={18} /> Trash Bin

@@ -7,6 +7,7 @@ import DashboardHome from './pages/DashboardHome';
 import FolderView from './pages/FolderView';
 import AllPhotosView from './pages/AllPhotosView';
 import UploadCenterView from './pages/UploadCenterView';
+import AiGeneratorView from './pages/AiGeneratorView';
 import './index.css';
 
 function App() {
@@ -59,6 +60,7 @@ function App() {
           <Route path="/folders/:folderId" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/all-photos" element={<AllPhotosView searchQuery={searchQuery} />} />
           <Route path="/upload" element={<UploadCenterView />} />
+          <Route path="/generate" element={<AiGeneratorView />} />
           <Route path="/trash" element={<FolderView searchQuery={searchQuery} />} />
           <Route path="/settings" element={<div style={{ padding: '2rem' }}>Settings coming soon...</div>} />
           <Route path="*" element={<Navigate to="/" replace />} />
