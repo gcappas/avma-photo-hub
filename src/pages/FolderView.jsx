@@ -35,6 +35,11 @@ export default function FolderView({ searchQuery }) {
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [allFoldersList, setAllFoldersList] = useState([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(48);
+
+  useEffect(() => {
+    setVisibleCount(48);
+  }, [folderId, location.pathname, searchQuery]);
 
   // Fetch current folder details & build recursive breadcrumbs
   useEffect(() => {
@@ -837,141 +842,169 @@ export default function FolderView({ searchQuery }) {
             {filteredPhotos.length === 0 ? (
               <p style={{ color: 'var(--text-muted)' }}>No photos match your criteria.</p>
             ) : viewMode === 'grid' ? (
-              <div className="photo-grid">
-                {filteredPhotos.map(photo => {
-                  const isSelected = selectedPhotoIds.includes(photo.id);
-                  return (
-                    <div 
-                      key={photo.id} 
-                      className={`photo-card ${isSelected ? 'selected' : ''}`} 
-                      onClick={() => handlePhotoClick(photo)}
-                      style={{ 
-                        position: 'relative',
-                        outline: isSelected ? '2px solid var(--primary)' : 'none',
-                        transform: isSelected ? 'scale(0.98)' : 'none'
-                      }}
-                    >
-                      {isSelectMode && (
-                        <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'white', borderRadius: '4px', padding: '2px', display: 'flex', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={isSelected}
-                            readOnly
-                            style={{ width: '16px', height: '16px', cursor: 'pointer', margin: 0 }}
-                          />
-                        </div>
-                      )}
-                      
-                      {/* Trash remaining days badge */}
-                      {isTrashView && (
-                        <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, background: '#ff4d4f', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                          {getDaysRemaining(photo.deletedAt)}
-                        </div>
-                      )}
+              <>
+                <div className="photo-grid">
+                  {filteredPhotos.slice(0, visibleCount).map(photo => {
+                    const isSelected = selectedPhotoIds.includes(photo.id);
+                    return (
+                      <div 
+                        key={photo.id} 
+                        className={`photo-card ${isSelected ? 'selected' : ''}`} 
+                        onClick={() => handlePhotoClick(photo)}
+                        style={{ 
+                          position: 'relative',
+                          outline: isSelected ? '2px solid var(--primary)' : 'none',
+                          transform: isSelected ? 'scale(0.98)' : 'none'
+                        }}
+                      >
+                        {isSelectMode && (
+                          <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'white', borderRadius: '4px', padding: '2px', display: 'flex', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              readOnly
+                              style={{ width: '16px', height: '16px', cursor: 'pointer', margin: 0 }}
+                            />
+                          </div>
+                        )}
+                        
+                        {/* Trash remaining days badge */}
+                        {isTrashView && (
+                          <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, background: '#ff4d4f', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                            {getDaysRemaining(photo.deletedAt)}
+                          </div>
+                        )}
 
-                      {photo.originalUrl ? (
-                        <img src={photo.originalUrl} alt="Uploaded asset" />
-                      ) : (
-                        <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                          <FileImage size={32} />
-                        </div>
-                      )}
-                      {!isTrashView && (photo.status === 'processing' || photo.status === 'processing_ai') && (
-                        <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
-                          AI Analyzing...
-                        </div>
-                      )}
-                      {photo.tags && photo.tags.length > 0 && (
-                        <div className="photo-overlay">
-                          {photo.tags.slice(0, 3).map(t => (
-                            <span key={t} className="tag-badge">{t}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                        {photo.originalUrl ? (
+                          <img src={photo.originalUrl} alt="Uploaded asset" loading="lazy" decoding="async" />
+                        ) : (
+                          <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                            <FileImage size={32} />
+                          </div>
+                        )}
+                        {!isTrashView && (photo.status === 'processing' || photo.status === 'processing_ai') && (
+                          <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                            AI Analyzing...
+                          </div>
+                        )}
+                        {photo.tags && photo.tags.length > 0 && (
+                          <div className="photo-overlay">
+                            {photo.tags.slice(0, 3).map(t => (
+                              <span key={t} className="tag-badge">{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {filteredPhotos.length > visibleCount && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
+                    <button 
+                      className="btn-secondary" 
+                      onClick={() => setVisibleCount(prev => prev + 48)}
+                      style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.9rem' }}
+                    >
+                      Load More Photos (Showing {Math.min(visibleCount, filteredPhotos.length)} of {filteredPhotos.length})
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               /* Compact List View */
-              <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', background: 'white' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                  <thead>
-                    <tr style={{ background: '#F7F9FA', borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                      {isSelectMode && <th style={{ padding: '12px', width: '40px' }}></th>}
-                      <th style={{ padding: '12px', width: '60px' }}>Preview</th>
-                      <th style={{ padding: '12px' }}>Name</th>
-                      <th style={{ padding: '12px', width: '120px' }}>Size</th>
-                      {isTrashView ? (
-                        <th style={{ padding: '12px', width: '140px' }}>Expires In</th>
-                      ) : (
-                        <th style={{ padding: '12px', width: '200px' }}>Tags</th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPhotos.map(photo => {
-                      const isSelected = selectedPhotoIds.includes(photo.id);
-                      const sizeMB = photo.size ? `${(photo.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown';
-                      return (
-                        <tr 
-                          key={photo.id} 
-                          onClick={() => handlePhotoClick(photo)}
-                          style={{ 
-                            borderBottom: '1px solid var(--border)', 
-                            cursor: 'pointer',
-                            background: isSelected ? 'rgba(0, 97, 254, 0.05)' : 'white'
-                          }}
-                        >
-                          {isSelectMode && (
-                            <td style={{ padding: '12px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                              <input 
-                                type="checkbox" 
-                                checked={isSelected}
-                                onChange={() => handlePhotoClick(photo)}
-                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                              />
-                            </td>
-                          )}
-                          <td style={{ padding: '8px 12px' }}>
-                            <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {photo.originalUrl ? (
-                                <img src={photo.originalUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              ) : (
-                                <FileImage size={18} color="var(--text-muted)" />
-                              )}
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px', fontWeight: 500, color: 'var(--text-dark)' }}>
-                            {highlightText(photo.filename, searchQuery)}
-                          </td>
-                          <td style={{ padding: '12px', color: 'var(--text-muted)' }}>
-                            {sizeMB}
-                          </td>
-                          {isTrashView ? (
-                            <td style={{ padding: '12px', color: '#ff4d4f', fontWeight: 600 }}>
-                              {getDaysRemaining(photo.deletedAt)}
-                            </td>
-                          ) : (
-                            <td style={{ padding: '12px' }}>
-                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                {photo.tags?.slice(0, 2).map(t => (
-                                  <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '2px 6px', borderRadius: '8px', fontSize: '0.75rem' }}>
-                                    {highlightText(t, searchQuery)}
-                                  </span>
-                                ))}
-                                {photo.tags && photo.tags.length > 2 && (
-                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+{photo.tags.length - 2}</span>
+              <>
+                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', background: 'white' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F7F9FA', borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                        {isSelectMode && <th style={{ padding: '12px', width: '40px' }}></th>}
+                        <th style={{ padding: '12px', width: '60px' }}>Preview</th>
+                        <th style={{ padding: '12px' }}>Name</th>
+                        <th style={{ padding: '12px', width: '120px' }}>Size</th>
+                        {isTrashView ? (
+                          <th style={{ padding: '12px', width: '140px' }}>Expires In</th>
+                        ) : (
+                          <th style={{ padding: '12px', width: '200px' }}>Tags</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPhotos.slice(0, visibleCount).map(photo => {
+                        const isSelected = selectedPhotoIds.includes(photo.id);
+                        const sizeMB = photo.size ? `${(photo.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown';
+                        return (
+                          <tr 
+                            key={photo.id} 
+                            onClick={() => handlePhotoClick(photo)}
+                            style={{ 
+                              borderBottom: '1px solid var(--border)', 
+                              cursor: 'pointer',
+                              background: isSelected ? 'rgba(0, 97, 254, 0.05)' : 'white'
+                            }}
+                          >
+                            {isSelectMode && (
+                              <td style={{ padding: '12px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isSelected}
+                                  onChange={() => handlePhotoClick(photo)}
+                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                />
+                              </td>
+                            )}
+                            <td style={{ padding: '8px 12px' }}>
+                              <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {photo.originalUrl ? (
+                                  <img src={photo.originalUrl} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <FileImage size={18} color="var(--text-muted)" />
                                 )}
                               </div>
                             </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            <td style={{ padding: '12px', fontWeight: 500, color: 'var(--text-dark)' }}>
+                              {highlightText(photo.filename, searchQuery)}
+                            </td>
+                            <td style={{ padding: '12px', color: 'var(--text-muted)' }}>
+                              {sizeMB}
+                            </td>
+                            {isTrashView ? (
+                              <td style={{ padding: '12px', color: '#ff4d4f', fontWeight: 600 }}>
+                                {getDaysRemaining(photo.deletedAt)}
+                              </td>
+                            ) : (
+                              <td style={{ padding: '12px' }}>
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {photo.tags?.slice(0, 2).map(t => (
+                                    <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '2px 6px', borderRadius: '8px', fontSize: '0.75rem' }}>
+                                      {highlightText(t, searchQuery)}
+                                    </span>
+                                  ))}
+                                  {photo.tags && photo.tags.length > 2 && (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+{photo.tags.length - 2}</span>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {filteredPhotos.length > visibleCount && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
+                    <button 
+                      className="btn-secondary" 
+                      onClick={() => setVisibleCount(prev => prev + 48)}
+                      style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.9rem' }}
+                    >
+                      Load More Photos (Showing {Math.min(visibleCount, filteredPhotos.length)} of {filteredPhotos.length})
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

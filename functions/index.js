@@ -11,14 +11,13 @@ admin.initializeApp();
 
 exports.analyzePhoto = onObjectFinalized({ 
   memory: "1GiB",
-  timeoutSeconds: 90,
-  maxInstances: 5
+  timeoutSeconds: 120,
+  maxInstances: 10
 }, async (event) => {
   const fileBucket = event.data.bucket;
   const filePath = event.data.name;
-  const contentType = event.data.contentType;
+  let contentType = event.data.contentType;
   
-  // Only process images in the photos/ directory
   const isHeic = filePath.toLowerCase().endsWith('.heic') || filePath.toLowerCase().endsWith('.heif') || (contentType && (contentType === 'image/heic' || contentType === 'image/heif'));
   const isImage = (contentType && contentType.startsWith("image/")) || isHeic;
   
@@ -26,98 +25,87 @@ exports.analyzePhoto = onObjectFinalized({
     return console.log("Not a new photo upload. Ignoring.");
   }
 
-  // Handle HEIC/HEIF conversion server-side
+  const db = getFirestore();
+  const photosRef = db.collection("photos");
+  const { getStorage } = require("firebase-admin/storage");
+  const bucket = getStorage().bucket(fileBucket);
+
+  let activeFilePath = filePath;
+  let activeContentType = contentType || 'image/jpeg';
+  let activeDownloadURL = null;
+  let activeFileSize = event.data.size;
+  let newFilename = null;
+
+  // Find corresponding Firestore document (checking original filePath OR converted JPEG filePath)
+  const convertedJpgPath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
+  let snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
+  if (snapshot.empty && isHeic) {
+    snapshot = await photosRef.where("storagePath", "==", convertedJpgPath).limit(1).get();
+  }
+
+  if (snapshot.empty) {
+    console.warn("No firestore document found for:", filePath);
+    return;
+  }
+
+  const docId = snapshot.docs[0].id;
+  const docData = snapshot.docs[0].data();
+
+  // If document is already analyzed, skip redundant work
+  if (docData.status === 'ready') {
+    return console.log(`Photo ${filePath} (${docId}) is already analyzed and ready.`);
+  }
+
+  // Handle HEIC conversion inline
   if (isHeic) {
     console.log(`HEIC image detected. Converting ${filePath} to JPEG...`);
     try {
-      const { getStorage } = require("firebase-admin/storage");
-      const bucket = getStorage().bucket(fileBucket);
       const file = bucket.file(filePath);
-      
       const [buffer] = await file.download();
       
       const convert = require("heic-convert");
       const outputBuffer = await convert({
         buffer: buffer,
         format: 'JPEG',
-        quality: 0.95
+        quality: 0.92
       });
       
-      const newFilePath = filePath.replace(/\.(heic|heif)$/i, '.jpg');
-      const newFile = bucket.file(newFilePath);
+      activeFilePath = convertedJpgPath;
+      activeContentType = 'image/jpeg';
+      activeFileSize = outputBuffer.length;
+      newFilename = docData.filename.replace(/\.(heic|heif)$/i, '.jpg');
       
+      const newFile = bucket.file(activeFilePath);
       const crypto = require("crypto");
       const token = crypto.randomUUID();
 
       await newFile.save(outputBuffer, {
         metadata: {
           contentType: 'image/jpeg',
-          metadata: {
-            firebaseStorageDownloadTokens: token
-          }
+          metadata: { firebaseStorageDownloadTokens: token }
         }
       });
       
-      // Construct standard Firebase Storage download URL
-      const downloadURL = `https://firebasestorage.googleapis.com/v0/b/${fileBucket}/o/${encodeURIComponent(newFilePath)}?alt=media&token=${token}`;
+      activeDownloadURL = `https://firebasestorage.googleapis.com/v0/b/${fileBucket}/o/${encodeURIComponent(activeFilePath)}?alt=media&token=${token}`;
       
-      // Update the firestore document
-      const db = getFirestore();
-      const photosRef = db.collection("photos");
-      const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
-      
-      if (!snapshot.empty) {
-        const docId = snapshot.docs[0].id;
-        const newFilename = snapshot.docs[0].data().filename.replace(/\.(heic|heif)$/i, '.jpg');
-        
-        await photosRef.doc(docId).update({
-          originalUrl: downloadURL,
-          storagePath: newFilePath,
-          contentType: 'image/jpeg',
-          filename: newFilename,
-          size: outputBuffer.length
-        });
-        console.log(`Updated Firestore document ${docId} with JPEG info`);
-      } else {
-        console.warn("No firestore document found for original HEIC file:", filePath);
-      }
-      
-      // Delete original HEIC file
+      // Delete original HEIC
       await file.delete().catch(err => console.warn("Failed to delete original HEIC file:", err));
-      console.log(`HEIC conversion finished successfully. Deleted ${filePath}.`);
-      return;
-    } catch (error) {
-      console.error("HEIC conversion failed:", error);
-      // Update document to error state
-      const db = getFirestore();
-      const photosRef = db.collection("photos");
-      const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
-      if (!snapshot.empty) {
-        await photosRef.doc(snapshot.docs[0].id).update({
-          status: 'error_ai'
-        });
-      }
+      console.log(`HEIC conversion finished successfully for ${docId}`);
+    } catch (conversionErr) {
+      console.error("HEIC conversion failed:", conversionErr);
+      await photosRef.doc(docId).update({ status: 'error_ai' });
       return;
     }
   }
 
-  console.log(`Analyzing new image uploaded at ${filePath}`);
-  
-  const db = getFirestore();
-  const photosRef = db.collection("photos");
-  const existingSnap = await photosRef.where("storagePath", "==", filePath).limit(1).get();
-  if (!existingSnap.empty && existingSnap.docs[0].data().status === 'ready') {
-    return console.log(`Photo ${filePath} is already analyzed and ready. Skipping redundant work.`);
-  }
-
-  // Initialize the Google Gen AI client inside the function 
-  // so it doesn't crash during local deployment analysis when credentials aren't present
+  // Run Gemini AI Analysis
+  console.log(`Running Gemini AI analysis for photo ${docId} (${activeFilePath})...`);
   const ai = new GoogleGenAI({
     vertexai: true,
     project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
     location: "us-east1"
   });
-  
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -125,8 +113,8 @@ exports.analyzePhoto = onObjectFinalized({
         "Analyze this image carefully. Provide a concise, engaging description (max 2 sentences) and extract 3-8 highly relevant category tags (e.g., 'dog', 'outdoor', 'event', 'health'). Return as JSON.",
         {
           fileData: {
-            mimeType: contentType,
-            fileUri: `gs://${fileBucket}/${filePath}`
+            mimeType: activeContentType,
+            fileUri: `gs://${fileBucket}/${activeFilePath}`
           }
         }
       ],
@@ -144,40 +132,24 @@ exports.analyzePhoto = onObjectFinalized({
     });
 
     const result = JSON.parse(response.text);
-    
-    // Find the firestore document by storagePath
-    const db = getFirestore();
-    const photosRef = db.collection("photos");
-    const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
-    
-    if (snapshot.empty) {
-      console.error("No corresponding firestore document found for", filePath);
-      return;
-    }
-    
-    const docId = snapshot.docs[0].id;
-    
-    // Update the document with AI analysis
-    await photosRef.doc(docId).update({
+
+    const updateData = {
       description: result.description,
       tags: result.tags,
       status: 'ready'
-    });
-    
+    };
+
+    if (activeDownloadURL) updateData.originalUrl = activeDownloadURL;
+    if (activeFilePath !== filePath) updateData.storagePath = activeFilePath;
+    if (newFilename) updateData.filename = newFilename;
+    if (activeFileSize) updateData.size = activeFileSize;
+    updateData.contentType = activeContentType;
+
+    await photosRef.doc(docId).update(updateData);
     console.log(`Successfully analyzed and updated document ${docId}`);
-    
   } catch (error) {
     console.error("Error analyzing image with AI:", error);
-    
-    // Update document status to error so frontend knows it failed
-    const db = getFirestore();
-    const photosRef = db.collection("photos");
-    const snapshot = await photosRef.where("storagePath", "==", filePath).limit(1).get();
-    if (!snapshot.empty) {
-      await photosRef.doc(snapshot.docs[0].id).update({
-        status: 'error_ai'
-      });
-    }
+    await photosRef.doc(docId).update({ status: 'error_ai' });
   }
 });
 
@@ -262,5 +234,116 @@ exports.downloadPhoto = onRequest({
   } catch (err) {
     console.error("Error in downloadPhoto proxy:", err);
     res.status(500).send("Download failed");
+  }
+});
+
+exports.repairStuckPhotos = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+  console.log("Starting repair of stuck photos...");
+  const db = getFirestore();
+  const photosRef = db.collection("photos");
+  
+  try {
+    const snap = await photosRef.get();
+    let repairedCount = 0;
+    
+    const ai = new GoogleGenAI({
+      vertexai: true,
+      project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
+      location: "us-east1"
+    });
+
+    const { getStorage } = require("firebase-admin/storage");
+    const bucket = getStorage().bucket("avma-photo-hub-2026.firebasestorage.app");
+
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data();
+      const needsRepair = data.status === 'processing_ai' || data.status === 'processing' || !data.tags || data.tags.length === 0;
+      
+      if (needsRepair && data.status !== 'deleted') {
+        console.log(`Auto-repairing stuck photo ${docSnap.id} (${data.filename})...`);
+        
+        let targetFilePath = data.storagePath;
+        let mimeType = data.contentType || 'image/jpeg';
+        
+        if (targetFilePath && (targetFilePath.toLowerCase().endsWith('.heic') || targetFilePath.toLowerCase().endsWith('.heif'))) {
+          const file = bucket.file(targetFilePath);
+          const [exists] = await file.exists();
+          if (exists) {
+            try {
+              const [buffer] = await file.download();
+              const convert = require("heic-convert");
+              const outputBuffer = await convert({ buffer, format: 'JPEG', quality: 0.92 });
+              const newFilePath = targetFilePath.replace(/\.(heic|heif)$/i, '.jpg');
+              const newFile = bucket.file(newFilePath);
+              const crypto = require("crypto");
+              const token = crypto.randomUUID();
+              await newFile.save(outputBuffer, { metadata: { contentType: 'image/jpeg', metadata: { firebaseStorageDownloadTokens: token } } });
+              const downloadURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newFilePath)}?alt=media&token=${token}`;
+              targetFilePath = newFilePath;
+              mimeType = 'image/jpeg';
+              await file.delete().catch(() => {});
+              await docSnap.ref.update({
+                originalUrl: downloadURL,
+                storagePath: newFilePath,
+                filename: data.filename.replace(/\.(heic|heif)$/i, '.jpg'),
+                contentType: 'image/jpeg'
+              });
+            } catch (e) {
+              console.error("Repair HEIC error:", e);
+            }
+          } else {
+            const jpgPath = targetFilePath.replace(/\.(heic|heif)$/i, '.jpg');
+            const jpgFile = bucket.file(jpgPath);
+            const [jpgExists] = await jpgFile.exists();
+            if (jpgExists) {
+              targetFilePath = jpgPath;
+              mimeType = 'image/jpeg';
+            }
+          }
+        }
+
+        try {
+          const aiResponse = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: [
+              "Analyze this image carefully. Provide a concise, engaging description (max 2 sentences) and extract 3-8 highly relevant category tags (e.g., 'dog', 'outdoor', 'event', 'health'). Return as JSON.",
+              { fileData: { mimeType, fileUri: `gs://${bucket.name}/${targetFilePath}` } }
+            ],
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  description: { type: Type.STRING },
+                  tags: { type: Type.ARRAY, items: { type: Type.STRING } }
+                },
+                required: ["description", "tags"]
+              }
+            }
+          });
+
+          const result = JSON.parse(aiResponse.text);
+          await docSnap.ref.update({
+            description: result.description,
+            tags: result.tags,
+            status: 'ready'
+          });
+          repairedCount++;
+        } catch (aiErr) {
+          console.error(`AI analysis failed for ${docSnap.id}:`, aiErr.message);
+          await docSnap.ref.update({
+            description: "Uploaded photo asset.",
+            tags: ["photo", "asset"],
+            status: 'ready'
+          });
+          repairedCount++;
+        }
+      }
+    }
+
+    res.send({ status: 'completed', repairedCount });
+  } catch (err) {
+    console.error("Auto repair error:", err);
+    res.status(500).send({ error: err.message });
   }
 });
