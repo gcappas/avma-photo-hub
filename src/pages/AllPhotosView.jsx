@@ -76,11 +76,16 @@ export default function AllPhotosView({ searchQuery }) {
       // 1. Category Dropdown Filtering
       if (selectedCategory !== 'All') {
         const cat = selectedCategory.toLowerCase();
-        const hasCategory = photo.tags?.some(t => {
+        const escapeRegex = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        const wordRegex = new RegExp(`\\b${escapeRegex(cat)}(s|es)?\\b`, 'i');
+
+        const hasTag = photo.tags?.some(t => {
           const cleanT = t.trim().toLowerCase();
           return cleanT === cat || cleanT === cat + 's' || cleanT + 's' === cat;
         });
-        if (!hasCategory) return false;
+        const inDesc = wordRegex.test(photo.description || '');
+
+        if (!hasTag && !inDesc) return false;
       }
 
       // 2. Search Query Filtering
