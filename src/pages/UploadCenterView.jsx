@@ -21,13 +21,26 @@ export default function UploadCenterView() {
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', paddingBottom: '3rem' }}>
-      {/* Header Banner */}
-      <div className="glass" style={{ padding: '2rem', borderRadius: '16px', marginBottom: '2.5rem', background: 'linear-gradient(135deg, #00305E 0%, #008B95 100%)', color: 'white' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#55B800', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-          <Sparkles size={18} /> High Performance Media Ingestion
+      {/* High-Contrast Header Banner */}
+      <div 
+        className="glass" 
+        style={{ 
+          padding: '2.25rem', 
+          borderRadius: '16px', 
+          marginBottom: '2.5rem', 
+          background: 'linear-gradient(135deg, #002244 0%, #00305E 50%, #004B91 100%)', 
+          color: '#FFFFFF',
+          boxShadow: '0 8px 32px rgba(0, 48, 94, 0.25)',
+          border: '1px solid rgba(255, 255, 255, 0.15)'
+        }}
+      >
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem', background: 'rgba(85, 184, 0, 0.2)', color: '#76E01A', padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.85rem', border: '1px solid rgba(118, 224, 26, 0.4)' }}>
+          <Sparkles size={16} /> High Performance Media Ingestion
         </div>
-        <h2 style={{ fontSize: '1.75rem', margin: 0, fontWeight: 700 }}>Dedicated Upload Center</h2>
-        <p style={{ margin: '0.5rem 0 0 0', opacity: 0.9, fontSize: '0.95rem' }}>
+        <h2 style={{ fontSize: '1.85rem', margin: 0, fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
+          Dedicated Upload Center
+        </h2>
+        <p style={{ margin: '0.5rem 0 0 0', color: '#E0F2FE', fontSize: '0.95rem', maxWidth: '650px', lineHeight: '1.5' }}>
           Upload high-resolution camera originals, HEIC photos, and asset batches directly to your organization folders.
         </p>
       </div>
