@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2 } from 'lucide-react';
+import pkg from '../../package.json';
 
 export default function Sidebar() {
   return (
@@ -36,7 +37,7 @@ export default function Sidebar() {
           <Settings size={18} /> Settings
         </NavLink>
         <div style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.35)', padding: '12px 12px 0 12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', marginTop: '8px' }}>
-          Version 1.2.0
+          Version {pkg.version}
         </div>
       </div>
     </aside>
