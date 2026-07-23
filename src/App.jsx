@@ -38,7 +38,7 @@ function App() {
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-color)' }}>
         <div className="glass" style={{ padding: '3rem', textAlign: 'center', maxWidth: '400px', width: '90%' }}>
           <img src="/avmais-logo.png" alt="AVMA Insurance Services Logo" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', margin: '0 auto 2rem', display: 'block' }} />
-          <h2 style={{ marginBottom: '1rem' }}>Photo Hub</h2>
+          <h2 style={{ marginBottom: '1rem' }}>Photo Studio</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', lineHeight: '1.5' }}>
             Marketing assets and high-res photos. Sign in with your corporate account to continue.
           </p>

@@ -75,7 +75,7 @@ export default function DashboardHome({ searchQuery }) {
               <Sparkles size={16} /> Enterprise Asset Hub
             </div>
             <h2 style={{ fontSize: '1.85rem', margin: 0, fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
-              AVMA Photo Hub Dashboard
+              AVMA Photo Studio Dashboard
             </h2>
             <p style={{ margin: '0.5rem 0 0 0', color: '#E0F2FE', fontSize: '0.95rem', maxWidth: '650px', lineHeight: '1.5' }}>
               Centralized DAM platform with automated Google Gemini AI image indexing, HEIC conversion, and secure cloud storage.
