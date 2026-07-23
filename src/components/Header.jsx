@@ -1,22 +1,27 @@
 import { Search, LogOut } from 'lucide-react';
 import { signOut } from 'firebase/auth';
+import { useLocation } from 'react-router-dom';
 import { auth } from '../firebase';
 
 export default function Header({ user, searchQuery, setSearchQuery }) {
+  const location = useLocation();
+  const isHomePage = location.pathname === '/';
   const handleLogout = () => signOut(auth);
 
   return (
-    <header className="header">
-      <div className="search-container">
-        <Search className="search-icon" size={18} />
-        <input 
-          type="search" 
-          placeholder="Search by AI tags, description, or filename..." 
-          className="search-input"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
+    <header className="header" style={{ justifyContent: isHomePage ? 'flex-end' : 'space-between' }}>
+      {!isHomePage && (
+        <div className="search-container">
+          <Search className="search-icon" size={18} />
+          <input 
+            type="search" 
+            placeholder="Search by AI tags, description, or filename..." 
+            className="search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
