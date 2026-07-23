@@ -76,7 +76,10 @@ export default function AllPhotosView({ searchQuery }) {
       // 1. Category Dropdown Filtering
       if (selectedCategory !== 'All') {
         const cat = selectedCategory.toLowerCase();
-        const hasCategory = photo.tags?.some(t => t.toLowerCase() === cat);
+        const hasCategory = photo.tags?.some(t => {
+          const cleanT = t.trim().toLowerCase();
+          return cleanT === cat || cleanT === cat + 's' || cleanT + 's' === cat;
+        });
         if (!hasCategory) return false;
       }
 
@@ -85,12 +88,17 @@ export default function AllPhotosView({ searchQuery }) {
 
       const filename = (photo.filename || '').toLowerCase();
       const description = (photo.description || '').toLowerCase();
-      const tags = (photo.tags || []).map(t => t.toLowerCase());
+      const tags = (photo.tags || []).map(t => t.trim().toLowerCase());
 
       return terms.every(term => {
-        const inFilename = filename.includes(term);
-        const inDesc = description.includes(term);
-        const inTags = tags.some(t => t.includes(term) || term.includes(t));
+        // Whole-word regex match to prevent "education", "location", "publication" matching "cat"
+        const escapeRegex = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        const wordRegex = new RegExp(`\\b${escapeRegex(term)}(s|es)?\\b`, 'i');
+
+        const inFilename = wordRegex.test(filename) || filename.includes(term);
+        const inDesc = wordRegex.test(description);
+        const inTags = tags.some(t => t === term || t === term + 's' || t + 's' === term || wordRegex.test(t));
+
         return inFilename || inDesc || inTags;
       });
     });

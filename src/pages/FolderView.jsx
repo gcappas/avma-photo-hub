@@ -217,12 +217,16 @@ export default function FolderView({ searchQuery }) {
 
       const filename = (photo.filename || '').toLowerCase();
       const description = (photo.description || '').toLowerCase();
-      const tags = (photo.tags || []).map(t => t.toLowerCase());
+      const tags = (photo.tags || []).map(t => t.trim().toLowerCase());
 
       return terms.every(term => {
-        const inFilename = filename.includes(term);
-        const inDesc = description.includes(term);
-        const inTags = tags.some(t => t.includes(term) || term.includes(t));
+        const escapeRegex = (s) => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        const wordRegex = new RegExp(`\\b${escapeRegex(term)}(s|es)?\\b`, 'i');
+
+        const inFilename = wordRegex.test(filename) || filename.includes(term);
+        const inDesc = wordRegex.test(description);
+        const inTags = tags.some(t => t === term || t === term + 's' || t + 's' === term || wordRegex.test(t));
+
         return inFilename || inDesc || inTags;
       });
     });
