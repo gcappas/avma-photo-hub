@@ -47,23 +47,24 @@ export default function AllPhotosView({ searchQuery }) {
   }, [photoParam, photos]);
 
   // Extract top 8 AI Category Tags dynamically for filter chips
-  const categoryChips = useMemo(() => {
+  // Dynamically extract all unique AI Category Tags for dropdown filter
+  const allUniqueTags = useMemo(() => {
     const counts = {};
     photos.forEach(p => {
       if (p.tags) {
         p.tags.forEach(tag => {
-          const t = tag.trim().toLowerCase();
-          counts[t] = (counts[t] || 0) + 1;
+          const t = tag.trim();
+          if (t) {
+            const formatted = t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+            counts[formatted] = (counts[formatted] || 0) + 1;
+          }
         });
       }
     });
 
-    const topTags = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(entry => entry[0].charAt(0).toUpperCase() + entry[0].slice(1));
-
-    return ['All', ...topTags];
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [photos]);
 
   // Client-side search and category filtering
@@ -72,7 +73,7 @@ export default function AllPhotosView({ searchQuery }) {
     const terms = rawQuery.split(/\s+/).filter(Boolean);
 
     return photos.filter(photo => {
-      // 1. Category Chip Filtering
+      // 1. Category Dropdown Filtering
       if (selectedCategory !== 'All') {
         const cat = selectedCategory.toLowerCase();
         const hasCategory = photo.tags?.some(t => t.toLowerCase() === cat);
@@ -198,7 +199,7 @@ export default function AllPhotosView({ searchQuery }) {
     <div style={{ display: 'flex', gap: '2rem', height: '100%' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Header Title & Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-dark)' }}>
               All Photos Gallery
@@ -208,7 +209,33 @@ export default function AllPhotosView({ searchQuery }) {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Tag Filter Dropdown Select */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', padding: '4px 10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <Filter size={16} color="var(--primary)" />
+              <select 
+                value={selectedCategory} 
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-dark)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  outline: 'none',
+                  paddingRight: '4px'
+                }}
+              >
+                <option value="All">All Category Tags ({photos.length})</option>
+                {allUniqueTags.map(tag => (
+                  <option key={tag.name} value={tag.name}>
+                    {tag.name} ({tag.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* View Mode Toggle */}
             <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
               <button 
@@ -236,31 +263,6 @@ export default function AllPhotosView({ searchQuery }) {
               {isSelectMode ? 'Exit Selection' : 'Select Multiple'}
             </button>
           </div>
-        </div>
-
-        {/* Category Filter Chips */}
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '0.5rem', marginBottom: '1.75rem', scrollbarWidth: 'none' }}>
-          {categoryChips.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              style={{
-                padding: '6px 16px',
-                borderRadius: '20px',
-                border: '1px solid',
-                borderColor: selectedCategory === cat ? 'var(--primary)' : 'var(--border)',
-                background: selectedCategory === cat ? 'var(--primary)' : 'white',
-                color: selectedCategory === cat ? 'white' : 'var(--text-dark)',
-                fontSize: '0.85rem',
-                fontWeight: selectedCategory === cat ? 600 : 500,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              {cat}
-            </button>
-          ))}
         </div>
 
         {/* Photos Grid Stream */}
