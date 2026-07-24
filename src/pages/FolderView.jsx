@@ -4,6 +4,7 @@ import { collection, query, where, limit, onSnapshot, addDoc, serverTimestamp, d
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2, Loader2 } from 'lucide-react';
+import PhotoDetailsModal from '../components/PhotoDetailsModal';
 import UploadManager from '../components/UploadManager';
 
 export default function FolderView({ searchQuery }) {
@@ -1014,159 +1015,17 @@ export default function FolderView({ searchQuery }) {
         )}
       </div>
 
-      {/* Right Side Panel - Photo Details */}
-      {selectedPhoto && (
-        <div className="right-panel glass">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Photo Details</h3>
-            <button onClick={() => { setSelectedPhoto(null); setSearchParams({}); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-              <X size={20} />
-            </button>
-          </div>
-          
-          <div 
-            onClick={() => setShowLightbox(true)}
-            style={{ borderRadius: '8px', overflow: 'hidden', marginBottom: '1rem', background: '#eee', cursor: 'pointer', position: 'relative' }}
-            title="Click to view full screen"
-          >
-            {selectedPhoto.originalUrl && <img src={selectedPhoto.originalUrl} alt="Preview" style={{ width: '100%', display: 'block', transition: 'filter 0.2s' }} />}
-            <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.6)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
-              Click to Zoom
-            </div>
-          </div>
-          
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Filename</h4>
-            <p style={{ fontSize: '0.95rem', fontWeight: 500, wordBreak: 'break-all' }}>
-              {highlightText(selectedPhoto.filename, searchQuery)}
-            </p>
-          </div>
-
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>AI Description</h4>
-            <p style={{ fontSize: '0.95rem', lineHeight: 1.5 }}>
-              {highlightText(selectedPhoto.description || 'No description available yet.', searchQuery)}
-            </p>
-          </div>
-          
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Tags</h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '0.75rem' }}>
-              {selectedPhoto.tags?.map(t => (
-                <span 
-                  key={t} 
-                  style={{ 
-                    background: '#E8F0FE', 
-                    color: 'var(--primary)', 
-                    padding: '4px 8px 4px 10px', 
-                    borderRadius: '12px', 
-                    fontSize: '0.85rem', 
-                    fontWeight: 500,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  {highlightText(t, searchQuery)}
-                  {!isTrashView && (
-                    <button 
-                      onClick={() => handleRemoveTag(selectedPhoto, t)} 
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', color: 'var(--primary)' }}
-                      title="Remove Tag"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </span>
-              ))}
-              {(!selectedPhoto.tags || selectedPhoto.tags.length === 0) && <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>None</span>}
-            </div>
-            
-            {!isTrashView && (
-              <form onSubmit={(e) => handleAddTag(selectedPhoto, e)} style={{ display: 'flex', gap: '8px' }}>
-                <input 
-                  type="text" 
-                  name="newTag" 
-                  placeholder="Add custom tag..." 
-                  style={{ 
-                    flex: 1, 
-                    padding: '6px 12px', 
-                    borderRadius: '6px', 
-                    border: '1px solid var(--border)',
-                    fontSize: '0.85rem'
-                  }}
-                />
-                <button 
-                  type="submit" 
-                  className="btn" 
-                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-                >
-                  Add
-                </button>
-              </form>
-            )}
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {isTrashView ? (
-              <>
-                <button 
-                  className="btn" 
-                  style={{ width: '100%', justifyContent: 'center', background: 'green', borderColor: 'green' }} 
-                  onClick={() => handleRestorePhoto(selectedPhoto)}
-                >
-                  <RotateCcw size={16} style={{ marginRight: '6px' }} /> Restore Photo
-                </button>
-                <button 
-                  className="btn-secondary" 
-                  style={{ width: '100%', justifyContent: 'center', borderColor: '#ff4d4f', color: '#ff4d4f', gap: '8px' }} 
-                  onClick={() => handleDeletePhoto(selectedPhoto)}
-                >
-                  <Trash2 size={16} /> Delete Permanently
-                </button>
-              </>
-            ) : (
-              <>
-                <button 
-                  className="btn-secondary" 
-                  style={{ width: '100%', justifyContent: 'center', gap: '8px' }} 
-                  onClick={() => {
-                    const url = `${window.location.origin}${location.pathname}?photo=${selectedPhoto.id}`;
-                    copyToClipboard(url, "Photo link copied to clipboard!");
-                  }}
-                >
-                  <Link2 size={16} /> Copy Shareable Link
-                </button>
-                <button 
-                  className="btn" 
-                  style={{ width: '100%', justifyContent: 'center' }} 
-                  disabled={isDownloading}
-                  onClick={async () => {
-                    setIsDownloading(true);
-                    await downloadSinglePhoto(selectedPhoto);
-                    setIsDownloading(false);
-                  }}
-                >
-                  {isDownloading ? (
-                    <>
-                      <Loader2 size={16} className="spinner" style={{ animation: 'spin 1s linear infinite', marginRight: '6px' }} /> Downloading...
-                    </>
-                  ) : (
-                    'Download Original'
-                  )}
-                </button>
-                <button 
-                  className="btn-secondary" 
-                  style={{ width: '100%', justifyContent: 'center', borderColor: '#ff4d4f', color: '#ff4d4f', gap: '8px' }} 
-                  onClick={() => handleDeletePhoto(selectedPhoto)}
-                >
-                  <Trash2 size={16} /> Move to Trash
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Photo Details Modal */}
+      <PhotoDetailsModal 
+        photo={selectedPhoto}
+        onClose={() => { setSelectedPhoto(null); setSearchParams({}); }}
+        onDownload={downloadSinglePhoto}
+        onDelete={handleDeletePhoto}
+        onAddTag={handleAddTag}
+        onRemoveTag={handleRemoveTag}
+        isTrashView={isTrashView}
+        onRestore={handleRestorePhoto}
+      />
 
       {/* Create Folder Modal */}
       {showCreateModal && (

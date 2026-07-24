@@ -18,10 +18,10 @@ export default function AiGeneratorView() {
 
   // Sample prompt suggestions
   const samplePrompts = [
-    "A compassionate veterinarian examining a friendly golden retriever in a bright clinic",
-    "Close-up high quality photography of a domestic shorthair cat near a medical window",
-    "Modern veterinary surgery laboratory with high-tech diagnostic equipment",
-    "A happy veterinary medical team in blue scrubs posing in a clean hospital lobby"
+    "A compassionate female veterinarian in a white coat kneeling beside a golden retriever dog in a modern clinic, both vet and dog clearly visible",
+    "A friendly male veterinarian in blue scrubs holding a cute domestic cat in a clean bright veterinary clinic",
+    "A cheerful veterinary team of doctors and vet assistants posing together with a happy dog in a modern medical lobby",
+    "Close-up high quality photography of a domestic cat resting comfortably on a veterinary examination table"
   ];
 
   // Fetch active folders
@@ -135,7 +135,7 @@ export default function AiGeneratorView() {
         }}
       >
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem', background: 'rgba(85, 184, 0, 0.2)', color: '#76E01A', padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.85rem', border: '1px solid rgba(118, 224, 26, 0.4)' }}>
-          <Sparkles size={16} /> Google Imagen 3 Vision Engine
+          <Sparkles size={16} /> Enterprise AI Generation Engine
         </div>
         <h2 style={{ fontSize: '1.85rem', margin: 0, fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
           AVMA Photo Studio AI Generator

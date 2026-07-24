@@ -4,6 +4,7 @@ import { collection, query, where, onSnapshot, limit, doc, updateDoc, deleteDoc,
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
 import { FileImage, Grid, List, Download, Link2, Trash2, X, Plus, RotateCcw, Loader2, Sparkles, Filter } from 'lucide-react';
+import PhotoDetailsModal from '../components/PhotoDetailsModal';
 
 export default function AllPhotosView({ searchQuery }) {
   const [photos, setPhotos] = useState([]);
@@ -403,90 +404,15 @@ export default function AllPhotosView({ searchQuery }) {
         )}
       </div>
 
-      {/* Right Side Panel - Photo Details */}
-      {selectedPhoto && (
-        <div className="right-panel glass">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Photo Details</h3>
-            <button onClick={() => { setSelectedPhoto(null); setSearchParams({}); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-              <X size={20} />
-            </button>
-          </div>
-          
-          <div style={{ borderRadius: '8px', overflow: 'hidden', marginBottom: '1rem', background: '#eee' }}>
-            {selectedPhoto.originalUrl && <img src={selectedPhoto.originalUrl} alt="Preview" style={{ width: '100%', display: 'block' }} />}
-          </div>
-
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', wordBreak: 'break-all', fontSize: '1rem' }}>{selectedPhoto.filename}</h4>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
-              Size: {selectedPhoto.size ? `${(selectedPhoto.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown'}
-            </p>
-          </div>
-
-          {selectedPhoto.description && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>AI Description</h5>
-              <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4', background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                {selectedPhoto.description}
-              </p>
-            </div>
-          )}
-
-          {/* Tags */}
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Tags</h5>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-              {selectedPhoto.tags?.map(t => (
-                <span key={t} className="tag-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  {t}
-                  <X size={12} style={{ cursor: 'pointer' }} onClick={() => handleRemoveTag(selectedPhoto, t)} />
-                </span>
-              ))}
-            </div>
-
-            <form onSubmit={e => handleAddTag(selectedPhoto, e)} style={{ display: 'flex', gap: '6px' }}>
-              <input type="text" name="newTag" placeholder="Add tag..." style={{ flex: 1, padding: '4px 8px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid var(--border)' }} />
-              <button type="submit" className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }}><Plus size={14} /></button>
-            </form>
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto' }}>
-            <button 
-              className="btn-secondary" 
-              style={{ width: '100%', justifyContent: 'center', gap: '8px' }} 
-              onClick={() => {
-                const url = `${window.location.origin}${location.pathname}?photo=${selectedPhoto.id}`;
-                copyToClipboard(url, "Photo link copied to clipboard!");
-              }}
-            >
-              <Link2 size={16} /> Copy Shareable Link
-            </button>
-            
-            <button 
-              className="btn" 
-              style={{ width: '100%', justifyContent: 'center' }} 
-              disabled={isDownloading}
-              onClick={async () => {
-                setIsDownloading(true);
-                await downloadSinglePhoto(selectedPhoto);
-                setIsDownloading(false);
-              }}
-            >
-              {isDownloading ? <Loader2 size={16} className="spinner" /> : 'Download Original'}
-            </button>
-
-            <button 
-              className="btn-secondary" 
-              style={{ width: '100%', justifyContent: 'center', borderColor: '#ff4d4f', color: '#ff4d4f', gap: '8px' }} 
-              onClick={() => handleDeletePhoto(selectedPhoto)}
-            >
-              <Trash2 size={16} /> Move to Trash
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Photo Details Modal */}
+      <PhotoDetailsModal 
+        photo={selectedPhoto}
+        onClose={() => { setSelectedPhoto(null); setSearchParams({}); }}
+        onDownload={downloadSinglePhoto}
+        onDelete={handleDeletePhoto}
+        onAddTag={handleAddTag}
+        onRemoveTag={handleRemoveTag}
+      />
     </div>
   );
 }

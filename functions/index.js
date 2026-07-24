@@ -415,9 +415,10 @@ exports.generateAiImage = onRequest({ cors: true, region: "us-east1", timeoutSec
     let folderId = targetFolderId || null;
     if (!folderId) {
       const foldersRef = db.collection("folders");
-      const folderSnap = await foldersRef.where("name", "==", "AI Generated Photos").where("status", "!=", "deleted").limit(1).get();
-      if (!folderSnap.empty) {
-        folderId = folderSnap.docs[0].id;
+      const folderSnap = await foldersRef.where("name", "==", "AI Generated Photos").get();
+      const activeFolderDoc = folderSnap.docs.find(doc => doc.data().status !== 'deleted');
+      if (activeFolderDoc) {
+        folderId = activeFolderDoc.id;
       } else {
         // Create the system folder automatically
         const newFolderRef = await foldersRef.add({
@@ -431,47 +432,35 @@ exports.generateAiImage = onRequest({ cors: true, region: "us-east1", timeoutSec
       }
     }
 
-    // 3. Initialize Vertex AI client & call Imagen 3
+    // 3. Generate AI image using Google AI Studio API (Nano Banana 2 / gemini-3.1-flash-image)
     console.log(`Generating AI image for prompt: "${prompt}" (Aspect Ratio: ${aspectRatio})`);
-    const ai = new GoogleGenAI({
-      vertexai: true,
-      project: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026",
-      location: "us-east1"
-    });
-
     let imageBytesBase64 = null;
+
     try {
-      const aiResponse = await ai.models.generateImages({
-        model: 'imagen-3.0-generate-002',
-        prompt: prompt.trim(),
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/jpeg',
-          aspectRatio: aspectRatio
-        }
+      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!apiKey) {
+        throw new Error("Missing GEMINI_API_KEY environment variable");
+      }
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-image',
+        contents: [prompt.trim()]
       });
 
-      if (aiResponse.generatedImages && aiResponse.generatedImages.length > 0) {
-        imageBytesBase64 = aiResponse.generatedImages[0].image.imageBytes;
-      }
-    } catch (primaryErr) {
-      console.warn("Imagen 3 primary model error, trying imagen-3.0-fast-generate-001 fallback:", primaryErr.message);
-      const fallbackResponse = await ai.models.generateImages({
-        model: 'imagen-3.0-fast-generate-001',
-        prompt: prompt.trim(),
-        config: {
-          numberOfImages: 1,
-          outputMimeType: 'image/jpeg',
-          aspectRatio: aspectRatio
+      if (response && response.candidates && response.candidates.length > 0) {
+        const part = response.candidates[0].content.parts[0];
+        if (part && part.inlineData && part.inlineData.data) {
+          imageBytesBase64 = part.inlineData.data;
+          console.log(`🎉🎉🎉 Successfully generated image using Nano Banana 2! Base64 size: ${imageBytesBase64.length}`);
         }
-      });
-      if (fallbackResponse.generatedImages && fallbackResponse.generatedImages.length > 0) {
-        imageBytesBase64 = fallbackResponse.generatedImages[0].image.imageBytes;
       }
+    } catch (aiErr) {
+      console.error("AI Generation failed:", aiErr.message);
     }
 
     if (!imageBytesBase64) {
-      throw new Error("No image data returned from Google Imagen 3 AI model.");
+      throw new Error("Image Generation failed: No image data returned from AI engine");
     }
 
     // 4. Save generated JPEG to Firebase Storage
@@ -533,5 +522,133 @@ exports.generateAiImage = onRequest({ cors: true, region: "us-east1", timeoutSec
   } catch (err) {
     console.error("AI Image Generation failed:", err);
     res.status(500).send({ error: err.message || 'Image generation failed.' });
+  }
+});
+
+// Diagnostic endpoint to test all Vertex AI Imagen models and regions
+exports.testImageGen = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+  const results = [];
+  const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026";
+  
+  const candidateModels = [
+    'imagen-3.0-generate-002',
+    'imagen-3.0-fast-generate-001',
+    'imagen-3.0-generate-001',
+    'imagegeneration@006',
+    'imagegeneration@005',
+    'imagegeneration@002'
+  ];
+
+  const regions = ['us-central1', 'us-east1', 'us-west1', 'europe-west1'];
+
+  for (const location of regions) {
+    for (const model of candidateModels) {
+      try {
+        const ai = new GoogleGenAI({ vertexai: true, project, location });
+        const r = await ai.models.generateImages({
+          model,
+          prompt: "A simple blue sky",
+          config: { numberOfImages: 1, aspectRatio: "1:1", outputMimeType: "image/jpeg" }
+        });
+        if (r.generatedImages && r.generatedImages.length > 0) {
+          results.push({ location, model, success: true, count: r.generatedImages.length });
+          // If we found a working combination, break early!
+          return res.send({ workingCombination: { location, model }, results });
+        }
+      } catch (e) {
+        results.push({ location, model, success: false, error: e.message.slice(0, 150) });
+      }
+    }
+  }
+
+  res.send({ success: false, results });
+});
+
+// Helper Cloud Function to enable Vertex AI & Generative Language APIs on project
+exports.enableApis = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+  const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026";
+  try {
+    const { GoogleAuth } = require("google-auth-library");
+    const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
+    const client = await auth.getClient();
+    const tokenRes = await client.getAccessToken();
+    const token = tokenRes.token;
+
+    const apis = [
+      "aiplatform.googleapis.com",
+      "generativelanguage.googleapis.com"
+    ];
+
+    const results = {};
+    for (const api of apis) {
+      const url = `https://serviceusage.googleapis.com/v1/projects/${project}/services/${api}:enable`;
+      const apiRes = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      const data = await apiRes.json();
+      results[api] = { status: apiRes.status, state: data.response?.state || data };
+    }
+
+    res.send({ success: true, results });
+  } catch (err) {
+    console.error("Error enabling APIs:", err);
+    res.status(500).send({ error: err.message });
+  }
+});
+
+// Helper Cloud Function to automatically grant roles/aiplatform.user to the service account
+exports.grantVertexRole = onRequest({ cors: true, region: "us-east1" }, async (req, res) => {
+  const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "avma-photo-hub-2026";
+  try {
+    const { GoogleAuth } = require("google-auth-library");
+    const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] });
+    const client = await auth.getClient();
+    const tokenRes = await client.getAccessToken();
+    const token = tokenRes.token;
+
+    // 1. Get current IAM policy
+    const getPolicyUrl = `https://cloudresourcemanager.googleapis.com/v1/projects/${project}:getIamPolicy`;
+    const getRes = await fetch(getPolicyUrl, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+    });
+    const policy = await getRes.json();
+
+    if (!getRes.ok) {
+      return res.status(getRes.status).send({ error: policy.error?.message || "Failed to get IAM policy" });
+    }
+
+    const saEmail = `${project}@appspot.gserviceaccount.com`;
+    const memberStr = `serviceAccount:${saEmail}`;
+    const roleStr = "roles/aiplatform.user";
+
+    // 2. Ensure binding exists
+    let binding = policy.bindings.find(b => b.role === roleStr);
+    if (!binding) {
+      binding = { role: roleStr, members: [] };
+      policy.bindings.push(binding);
+    }
+
+    if (!binding.members.includes(memberStr)) {
+      binding.members.push(memberStr);
+    }
+
+    // 3. Set updated IAM policy
+    const setPolicyUrl = `https://cloudresourcemanager.googleapis.com/v1/projects/${project}:setIamPolicy`;
+    const setRes = await fetch(setPolicyUrl, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ policy })
+    });
+    const updatedPolicy = await setRes.json();
+
+    res.send({ success: setRes.ok, saEmail, role: roleStr, status: setRes.status, updatedPolicy });
+  } catch (err) {
+    console.error("Error granting Vertex AI role:", err);
+    res.status(500).send({ error: err.message });
   }
 });
