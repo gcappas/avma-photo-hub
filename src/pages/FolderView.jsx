@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { collection, query, where, limit, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, limit, onSnapshot, addDoc, serverTimestamp, doc, getDoc, getDocs, deleteDoc, updateDoc, arrayUnion, arrayRemove, writeBatch } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
-import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2, Loader2 } from 'lucide-react';
+import { Folder, FileImage, Plus, ChevronRight, X, Trash2, Grid, List, RotateCcw, Move, Download, Link2, Loader2, Heart } from 'lucide-react';
 import PhotoDetailsModal from '../components/PhotoDetailsModal';
 import UploadManager from '../components/UploadManager';
+import BatchOperations from '../components/BatchOperations';
 
 export default function FolderView({ searchQuery }) {
   const { folderId } = useParams();
@@ -441,6 +442,25 @@ export default function FolderView({ searchQuery }) {
     }
   };
 
+  const handleBatchDelete = async () => {
+    if (selectedPhotoIds.length === 0) return;
+    if (!window.confirm(`Move ${selectedPhotoIds.length} photos to the Trash Bin?`)) return;
+    
+    try {
+      const promises = selectedPhotoIds.map(id => 
+        updateDoc(doc(db, 'photos', id), {
+          status: 'deleted',
+          deletedAt: serverTimestamp()
+        })
+      );
+      await Promise.all(promises);
+      setSelectedPhotoIds([]);
+      setIsSelectMode(false);
+    } catch (err) {
+      console.error("Batch delete failed:", err);
+    }
+  };
+
   const handleRestorePhoto = async (photo) => {
     setSelectedPhoto(null);
     setSearchParams({});
@@ -478,7 +498,8 @@ export default function FolderView({ searchQuery }) {
     }
   };
 
-  const handlePhotoClick = (photo) => {
+  const handlePhotoClick = (photo, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (isSelectMode) {
       if (selectedPhotoIds.includes(photo.id)) {
         setSelectedPhotoIds(selectedPhotoIds.filter(id => id !== photo.id));
@@ -488,6 +509,19 @@ export default function FolderView({ searchQuery }) {
     } else {
       setSelectedPhoto(photo);
       setSearchParams({ photo: photo.id });
+    }
+  };
+
+  const handleToggleFavorite = async (photo) => {
+    try {
+      await updateDoc(doc(db, 'photos', photo.id), {
+        isFavorite: !photo.isFavorite
+      });
+      if (selectedPhoto && selectedPhoto.id === photo.id) {
+        setSelectedPhoto({ ...photo, isFavorite: !photo.isFavorite });
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite", err);
     }
   };
 
@@ -696,14 +730,14 @@ export default function FolderView({ searchQuery }) {
                 <button 
                   onClick={() => setViewMode('grid')}
                   style={{ background: viewMode === 'grid' ? '#E8F0FE' : 'white', border: 'none', padding: '6px 10px', cursor: 'pointer', display: 'flex', color: viewMode === 'grid' ? 'var(--primary)' : 'var(--text-muted)' }}
-                  title="Grid View"
+                  data-tooltip="Grid View"
                 >
                   <Grid size={18} />
                 </button>
                 <button 
                   onClick={() => setViewMode('list')}
                   style={{ background: viewMode === 'list' ? '#E8F0FE' : 'white', border: 'none', padding: '6px 10px', cursor: 'pointer', display: 'flex', color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-muted)' }}
-                  title="List View"
+                  data-tooltip="List View"
                 >
                   <List size={18} />
                 </button>
@@ -759,14 +793,14 @@ export default function FolderView({ searchQuery }) {
                           <button 
                             onClick={(e) => handleRestoreFolder(f.id, e)} 
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'green', padding: '4px' }}
-                            title="Restore Folder"
+                            data-tooltip="Restore Folder"
                           >
                             <RotateCcw size={16} />
                           </button>
                           <button 
                             onClick={(e) => handlePermanentDeleteFolder(f.id, e)} 
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4f', padding: '4px' }}
-                            title="Delete Permanently"
+                            data-tooltip="Delete Permanently"
                           >
                             <Trash2 size={16} />
                           </button>
@@ -775,7 +809,7 @@ export default function FolderView({ searchQuery }) {
                         <button 
                           onClick={(e) => handleDeleteFolder(f.id, e)} 
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
-                          title="Move Folder to Trash"
+                          data-tooltip="Move Folder to Trash"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -879,42 +913,94 @@ export default function FolderView({ searchQuery }) {
             </div>
             {filteredPhotos.length === 0 ? (
               <p style={{ color: 'var(--text-muted)' }}>No photos match your criteria.</p>
-            ) : viewMode === 'grid' ? (
+            ) : (
               <>
-                <div className="photo-grid">
-                  {filteredPhotos.slice(0, visibleCount).map(photo => {
+                <div className={viewMode === 'list' ? 'photo-list' : 'photo-grid'} style={viewMode === 'list' ? { display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: '10px', background: 'white' } : {}}>
+                  {filteredPhotos.slice(0, visibleCount).map((photo, index) => {
                     const isSelected = selectedPhotoIds.includes(photo.id);
+                    const sizeMB = photo.size ? `${(photo.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown';
+                    const imageUrl = photo.thumbnailUrl || photo.originalUrl;
+                    
+                    if (viewMode === 'list') {
+                      return (
+                        <div 
+                          key={photo.id}
+                          onClick={(e) => handlePhotoClick(photo, e)}
+                          style={{ 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            padding: '12px',
+                            borderBottom: '1px solid var(--border)', 
+                            cursor: 'pointer', 
+                            background: isSelected ? 'rgba(0, 97, 254, 0.05)' : 'white' 
+                          }}
+                        >
+                          {isSelectMode && (
+                            <div style={{ paddingRight: '12px', display: 'flex' }} onClick={e => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={isSelected}
+                                onChange={() => handlePhotoClick(photo)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                            </div>
+                          )}
+                          <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', background: '#eee', marginRight: '16px', flexShrink: 0 }}>
+                            {imageUrl ? (
+                              <img src={imageUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}><FileImage size={18} /></div>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, fontWeight: 500, color: 'var(--text-dark)' }}>{highlightText(photo.filename, searchQuery)}</div>
+                          <div style={{ width: '100px', color: 'var(--text-muted)' }}>{sizeMB}</div>
+                          {isTrashView ? (
+                            <div style={{ width: '140px', color: '#ff4d4f', fontWeight: 600 }}>{getDaysRemaining(photo.deletedAt)}</div>
+                          ) : (
+                            <div style={{ width: '220px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {photo.tags?.slice(0, 2).map(t => (
+                                <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '2px 6px', borderRadius: '8px', fontSize: '0.75rem' }}>{highlightText(t, searchQuery)}</span>
+                              ))}
+                              {photo.tags && photo.tags.length > 2 && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+{photo.tags.length - 2}</span>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Grid View
                     return (
                       <div 
-                        key={photo.id} 
+                        key={photo.id}
                         className={`photo-card ${isSelected ? 'selected' : ''}`} 
-                        onClick={() => handlePhotoClick(photo)}
+                        onClick={(e) => handlePhotoClick(photo, e)}
                         style={{ 
                           position: 'relative',
                           outline: isSelected ? '2px solid var(--primary)' : 'none',
-                          transform: isSelected ? 'scale(0.98)' : 'none'
+                          transform: isSelected ? 'scale(0.98)' : 'none',
+                          cursor: 'pointer'
                         }}
                       >
                         {isSelectMode && (
                           <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'white', borderRadius: '4px', padding: '2px', display: 'flex', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected}
-                              readOnly
-                              style={{ width: '16px', height: '16px', cursor: 'pointer', margin: 0 }}
-                            />
+                            <input type="checkbox" checked={isSelected} readOnly style={{ width: '16px', height: '16px', cursor: 'pointer', margin: 0 }} />
                           </div>
                         )}
                         
-                        {/* Trash remaining days badge */}
                         {isTrashView && (
                           <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, background: '#ff4d4f', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
                             {getDaysRemaining(photo.deletedAt)}
                           </div>
                         )}
 
-                        {photo.originalUrl ? (
-                          <img src={photo.originalUrl} alt="Uploaded asset" loading="lazy" decoding="async" />
+                        {!isTrashView && photo.isFavorite && (
+                          <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+                            <Heart size={20} fill="#e91e63" color="#e91e63" />
+                          </div>
+                        )}
+
+                        {imageUrl ? (
+                          <img src={imageUrl} alt="Uploaded asset" loading={index < 12 ? "eager" : "lazy"} decoding="async" />
                         ) : (
                           <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
                             <FileImage size={32} />
@@ -949,120 +1035,29 @@ export default function FolderView({ searchQuery }) {
                   </div>
                 )}
               </>
-            ) : (
-              /* Compact List View */
-              <>
-                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', background: 'white' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                    <thead>
-                      <tr style={{ background: '#F7F9FA', borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                        {isSelectMode && <th style={{ padding: '12px', width: '40px' }}></th>}
-                        <th style={{ padding: '12px', width: '60px' }}>Preview</th>
-                        <th style={{ padding: '12px' }}>Name</th>
-                        <th style={{ padding: '12px', width: '120px' }}>Size</th>
-                        {isTrashView ? (
-                          <th style={{ padding: '12px', width: '140px' }}>Expires In</th>
-                        ) : (
-                          <th style={{ padding: '12px', width: '200px' }}>Tags</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPhotos.slice(0, visibleCount).map(photo => {
-                        const isSelected = selectedPhotoIds.includes(photo.id);
-                        const sizeMB = photo.size ? `${(photo.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown';
-                        return (
-                          <tr 
-                            key={photo.id} 
-                            onClick={() => handlePhotoClick(photo)}
-                            style={{ 
-                              borderBottom: '1px solid var(--border)', 
-                              cursor: 'pointer',
-                              background: isSelected ? 'rgba(0, 97, 254, 0.05)' : 'white'
-                            }}
-                          >
-                            {isSelectMode && (
-                              <td style={{ padding: '12px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                                <input 
-                                  type="checkbox" 
-                                  checked={isSelected}
-                                  onChange={() => handlePhotoClick(photo)}
-                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                />
-                              </td>
-                            )}
-                            <td style={{ padding: '8px 12px' }}>
-                              <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {photo.originalUrl ? (
-                                  <img src={photo.originalUrl} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                  <FileImage size={18} color="var(--text-muted)" />
-                                )}
-                              </div>
-                            </td>
-                            <td style={{ padding: '12px', fontWeight: 500, color: 'var(--text-dark)' }}>
-                              {highlightText(photo.filename, searchQuery)}
-                            </td>
-                            <td style={{ padding: '12px', color: 'var(--text-muted)' }}>
-                              {sizeMB}
-                            </td>
-                            {isTrashView ? (
-                              <td style={{ padding: '12px', color: '#ff4d4f', fontWeight: 600 }}>
-                                {getDaysRemaining(photo.deletedAt)}
-                              </td>
-                            ) : (
-                              <td style={{ padding: '12px' }}>
-                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                  {photo.tags?.slice(0, 2).map(t => (
-                                    <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '2px 6px', borderRadius: '8px', fontSize: '0.75rem' }}>
-                                      {highlightText(t, searchQuery)}
-                                    </span>
-                                  ))}
-                                  {photo.tags && photo.tags.length > 2 && (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+{photo.tags.length - 2}</span>
-                                  )}
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {filteredPhotos.length > visibleCount && (
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-                    <button 
-                      className="btn-secondary" 
-                      onClick={() => setVisibleCount(prev => prev + 48)}
-                      style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.9rem' }}
-                    >
-                      Load More Photos (Showing {Math.min(visibleCount, filteredPhotos.length)} of {filteredPhotos.length})
-                    </button>
-                  </div>
-                )}
-              </>
             )}
           </div>
         )}
       </div>
 
       {/* Photo Details Modal */}
-      <PhotoDetailsModal 
-        photo={selectedPhoto}
-        onClose={() => { setSelectedPhoto(null); setSearchParams({}); }}
-        onDownload={downloadSinglePhoto}
-        onDelete={handleDeletePhoto}
-        onAddTag={handleAddTag}
-        onRemoveTag={handleRemoveTag}
-        isTrashView={isTrashView}
-        onRestore={handleRestorePhoto}
-        onNext={handleNext}
-        onPrev={handlePrev}
-        hasNext={hasNext}
-        hasPrev={hasPrev}
-      />
+      {selectedPhoto && (
+        <PhotoDetailsModal 
+          photo={selectedPhoto}
+          onClose={() => { setSelectedPhoto(null); setSearchParams({}); }}
+          onDownload={downloadSinglePhoto}
+          onDelete={() => handleDeletePhoto(selectedPhoto)}
+          onAddTag={(e) => handleAddTag(selectedPhoto, e)}
+          onRemoveTag={(t) => handleRemoveTag(selectedPhoto, t)}
+          isTrashView={isTrashView}
+          onRestore={() => handleRestorePhoto(selectedPhoto)}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          hasNext={hasNext}
+          hasPrev={hasPrev}
+          onToggleFavorite={handleToggleFavorite}
+        />
+      )}
 
       {/* Create Folder Modal */}
       {showCreateModal && (
@@ -1087,34 +1082,14 @@ export default function FolderView({ searchQuery }) {
         </div>
       )}
 
-      {/* Bulk Move Modal Folder Picker */}
-      {showMoveModal && (
-        <div className="modal-overlay" onClick={() => setShowMoveModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-            <h3 style={{ marginBottom: '1.5rem' }}>Move Selected Photos</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Select destination folder:</p>
-            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem', marginBottom: '1.5rem' }}>
-              <div 
-                onClick={() => handleMoveSelected('root')}
-                style={{ padding: '10px', borderRadius: '6px', cursor: 'pointer', hover: { background: '#f5f5f5' }, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500 }}
-              >
-                <Folder size={18} color="var(--primary)" /> Home (Root)
-              </div>
-              {allFoldersList.map(folder => (
-                <div 
-                  key={folder.id}
-                  onClick={() => handleMoveSelected(folder.id)}
-                  style={{ padding: '10px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
-                >
-                  <Folder size={18} color="var(--primary)" fill="rgba(0, 97, 254, 0.1)" /> {folder.name}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setShowMoveModal(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
+      {/* Batch Operations */}
+      {isSelectMode && selectedPhotoIds.length > 0 && (
+        <BatchOperations 
+          selectedPhotoIds={selectedPhotoIds}
+          setSelectedPhotoIds={setSelectedPhotoIds}
+          setIsSelectMode={setIsSelectMode}
+          onDelete={handleBatchDelete}
+        />
       )}
 
       {/* Lightbox Modal for Fullscreen View */}

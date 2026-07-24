@@ -1,41 +1,62 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, forwardRef } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { collection, query, where, onSnapshot, limit, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref, deleteObject } from 'firebase/storage';
-import { FileImage, Grid, List, Download, Link2, Trash2, X, Plus, RotateCcw, Loader2, Sparkles, Filter } from 'lucide-react';
+import { FileImage, Grid, List, Download, Link2, Trash2, X, Plus, RotateCcw, Loader2, Sparkles, Filter, CheckSquare, Square, Heart } from 'lucide-react';
 import PhotoDetailsModal from '../components/PhotoDetailsModal';
+import BatchOperations from '../components/BatchOperations';
 
-export default function AllPhotosView({ searchQuery }) {
+export default function AllPhotosView({ searchQuery, viewMode = 'all' }) {
   const [photos, setPhotos] = useState([]);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [viewMode, setViewMode] = useState('grid');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(48);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const photoParam = searchParams.get('photo');
   const location = useLocation();
 
-  // Reset pagination on navigation/search change
+  const [visibleCount, setVisibleCount] = useState(48);
+
+  // Check for selectMode in URL
+  useEffect(() => {
+    if (searchParams.get('selectMode') === 'true') {
+      setIsSelectMode(true);
+      setSearchParams(prev => {
+        prev.delete('selectMode');
+        return prev;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   useEffect(() => {
     setVisibleCount(48);
   }, [selectedCategory, searchQuery]);
-
   // Fetch photos
   useEffect(() => {
-    const q = query(collection(db, 'photos'), limit(200));
+    const q = query(collection(db, 'photos'), limit(500));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(p => p.status !== 'deleted');
-      setPhotos(list);
+        .map(doc => ({ id: doc.id, ...doc.data() }));
+        
+      let filtered = list;
+      if (viewMode === 'trash') {
+        filtered = list.filter(p => p.status === 'deleted');
+      } else {
+        filtered = list.filter(p => p.status !== 'deleted');
+        if (viewMode === 'favorites') {
+          filtered = filtered.filter(p => p.isFavorite === true);
+        }
+      }
+      setPhotos(filtered);
+      setSelectedPhotoIds([]);
+      setIsSelectMode(false);
     });
     return unsubscribe;
-  }, []);
+  }, [viewMode]);
 
 
 
@@ -121,7 +142,8 @@ export default function AllPhotosView({ searchQuery }) {
     }
   }, [photoParam, filteredPhotos]);
 
-  const handlePhotoClick = (photo) => {
+  const handlePhotoClick = (photo, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     if (isSelectMode) {
       if (selectedPhotoIds.includes(photo.id)) {
         setSelectedPhotoIds(selectedPhotoIds.filter(id => id !== photo.id));
@@ -131,6 +153,39 @@ export default function AllPhotosView({ searchQuery }) {
     } else {
       setSelectedPhoto(photo);
       setSearchParams({ photo: photo.id });
+    }
+  };
+  
+  const handleToggleFavorite = async (photo) => {
+    try {
+      await updateDoc(doc(db, 'photos', photo.id), {
+        isFavorite: !photo.isFavorite
+      });
+      // If modal is open, we should also update the selectedPhoto state so it re-renders immediately
+      if (selectedPhoto && selectedPhoto.id === photo.id) {
+        setSelectedPhoto({ ...photo, isFavorite: !photo.isFavorite });
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite", err);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedPhotoIds.length === 0) return;
+    if (!window.confirm(`Move ${selectedPhotoIds.length} photos to the Trash Bin?`)) return;
+    
+    try {
+      const promises = selectedPhotoIds.map(id => 
+        updateDoc(doc(db, 'photos', id), {
+          status: 'deleted',
+          deletedAt: new Date()
+        })
+      );
+      await Promise.all(promises);
+      setSelectedPhotoIds([]);
+      setIsSelectMode(false);
+    } catch (err) {
+      console.error("Batch delete failed:", err);
     }
   };
 
@@ -286,14 +341,14 @@ export default function AllPhotosView({ searchQuery }) {
               <button 
                 onClick={() => setViewMode('grid')}
                 style={{ background: viewMode === 'grid' ? '#E8F0FE' : 'white', border: 'none', padding: '6px 10px', cursor: 'pointer', display: 'flex', color: viewMode === 'grid' ? 'var(--primary)' : 'var(--text-muted)' }}
-                title="Grid View"
+                data-tooltip="Grid View"
               >
                 <Grid size={18} />
               </button>
               <button 
                 onClick={() => setViewMode('list')}
                 style={{ background: viewMode === 'list' ? '#E8F0FE' : 'white', border: 'none', padding: '6px 10px', cursor: 'pointer', display: 'flex', color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-muted)' }}
-                title="List View"
+                data-tooltip="List View"
               >
                 <List size={18} />
               </button>
@@ -315,16 +370,48 @@ export default function AllPhotosView({ searchQuery }) {
           <div className="glass" style={{ padding: '3rem', textAlign: 'center', borderRadius: '12px', color: 'var(--text-muted)' }}>
             No photos found matching your filter criteria.
           </div>
-        ) : viewMode === 'grid' ? (
+        ) : (
           <>
-            <div className="photo-grid">
-              {filteredPhotos.slice(0, visibleCount).map(photo => {
+            <div className={viewMode === 'list' ? 'photo-list' : 'photo-grid'} style={viewMode === 'list' ? { display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: '10px', background: 'white' } : {}}>
+              {filteredPhotos.slice(0, visibleCount).map((photo, index) => {
                 const isSelected = selectedPhotoIds.includes(photo.id);
+                const sizeMB = photo.size ? `${(photo.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown';
+                const imageUrl = photo.thumbnailUrl || photo.originalUrl;
+                
+                if (viewMode === 'list') {
+                  return (
+                    <div 
+                      key={photo.id}
+                      onClick={(e) => handlePhotoClick(photo, e)}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        padding: '12px',
+                        borderBottom: '1px solid var(--border)', 
+                        cursor: 'pointer', 
+                        background: isSelected ? 'rgba(0, 97, 254, 0.05)' : 'white' 
+                      }}
+                    >
+                      <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', background: '#eee', marginRight: '16px', flexShrink: 0 }}>
+                        {imageUrl && <img src={imageUrl} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                      </div>
+                      <div style={{ flex: 1, fontWeight: 500, color: 'var(--text-dark)' }}>{photo.filename}</div>
+                      <div style={{ width: '100px', color: 'var(--text-muted)' }}>{sizeMB}</div>
+                      <div style={{ width: '220px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {photo.tags?.slice(0, 3).map(t => (
+                          <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '2px 6px', borderRadius: '8px', fontSize: '0.75rem' }}>{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Grid View
                 return (
                   <div 
-                    key={photo.id} 
+                    key={photo.id}
                     className={`photo-card ${isSelected ? 'selected' : ''}`} 
-                    onClick={() => handlePhotoClick(photo)}
+                    onClick={(e) => handlePhotoClick(photo, e)}
                     style={{ 
                       position: 'relative',
                       outline: isSelected ? '2px solid var(--primary)' : 'none',
@@ -338,8 +425,14 @@ export default function AllPhotosView({ searchQuery }) {
                       </div>
                     )}
 
-                    {photo.originalUrl ? (
-                      <img src={photo.originalUrl} alt={photo.filename} loading="lazy" decoding="async" />
+                    {photo.isFavorite && (
+                      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+                        <Heart size={20} fill="#e91e63" color="#e91e63" />
+                      </div>
+                    )}
+
+                    {imageUrl ? (
+                      <img src={imageUrl} alt={photo.filename} loading={index < 12 ? "eager" : "lazy"} decoding="async" />
                     ) : (
                       <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
                         <FileImage size={32} />
@@ -376,78 +469,39 @@ export default function AllPhotosView({ searchQuery }) {
               </div>
             )}
           </>
-        ) : (
-          /* List View */
-          <>
-            <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', background: 'white' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead>
-                  <tr style={{ background: '#F7F9FA', borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '12px', width: '60px' }}>Preview</th>
-                    <th style={{ padding: '12px' }}>Filename</th>
-                    <th style={{ padding: '12px', width: '120px' }}>Size</th>
-                    <th style={{ padding: '12px', width: '220px' }}>AI Category Tags</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPhotos.slice(0, visibleCount).map(photo => {
-                    const isSelected = selectedPhotoIds.includes(photo.id);
-                    const sizeMB = photo.size ? `${(photo.size / (1024 * 1024)).toFixed(1)} MB` : 'Unknown';
-                    return (
-                      <tr 
-                        key={photo.id} 
-                        onClick={() => handlePhotoClick(photo)}
-                        style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: isSelected ? 'rgba(0, 97, 254, 0.05)' : 'white' }}
-                      >
-                        <td style={{ padding: '8px 12px' }}>
-                          <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', background: '#eee' }}>
-                            {photo.originalUrl && <img src={photo.originalUrl} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px', fontWeight: 500, color: 'var(--text-dark)' }}>{photo.filename}</td>
-                        <td style={{ padding: '12px', color: 'var(--text-muted)' }}>{sizeMB}</td>
-                        <td style={{ padding: '12px' }}>
-                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                            {photo.tags?.slice(0, 3).map(t => (
-                              <span key={t} style={{ background: '#E8F0FE', color: 'var(--primary)', padding: '2px 6px', borderRadius: '8px', fontSize: '0.75rem' }}>{t}</span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredPhotos.length > visibleCount && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem' }}>
-                <button 
-                  className="btn-secondary" 
-                  onClick={() => setVisibleCount(prev => prev + 48)}
-                  style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.9rem' }}
-                >
-                  Load More Photos (Showing {Math.min(visibleCount, filteredPhotos.length)} of {filteredPhotos.length})
-                </button>
-              </div>
-            )}
-          </>
         )}
       </div>
 
-      {/* Photo Details Modal */}
-      <PhotoDetailsModal 
-        photo={selectedPhoto}
-        onClose={() => { setSelectedPhoto(null); setSearchParams({}); }}
-        onDownload={downloadSinglePhoto}
-        onDelete={handleDeletePhoto}
-        onAddTag={handleAddTag}
-        onRemoveTag={handleRemoveTag}
-        onNext={handleNext}
-        onPrev={handlePrev}
-        hasNext={hasNext}
-        hasPrev={hasPrev}
-      />
+      {/* Batch Operations */}
+      {isSelectMode && selectedPhotoIds.length > 0 && (
+        <BatchOperations 
+          selectedPhotoIds={selectedPhotoIds}
+          setSelectedPhotoIds={setSelectedPhotoIds}
+          setIsSelectMode={setIsSelectMode}
+          onDelete={handleBatchDelete}
+        />
+      )}
+
+      {selectedPhoto && (
+        <PhotoDetailsModal 
+          photo={selectedPhoto} 
+          onClose={() => {
+            setSelectedPhoto(null);
+            setSearchParams({});
+          }}
+          onDownload={() => downloadSinglePhoto(selectedPhoto)}
+          onDelete={() => handleDeletePhoto(selectedPhoto)}
+          onAddTag={(e) => handleAddTag(selectedPhoto, e)}
+          onRemoveTag={(t) => handleRemoveTag(selectedPhoto, t)}
+          isTrashView={viewMode === 'trash'}
+          onRestore={() => handleRestorePhoto(selectedPhoto)}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          hasNext={currentIndex < filteredPhotos.length - 1}
+          hasPrev={currentIndex > 0}
+          onToggleFavorite={handleToggleFavorite}
+        />
+      )}
     </div>
   );
 }

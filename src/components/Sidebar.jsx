@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2, Sparkles } from 'lucide-react';
+import { Home, Image as ImageIcon, Folder, Upload, Settings, Trash2, Sparkles, Heart, Layers } from 'lucide-react';
 import pkg from '../../package.json';
 
 export default function Sidebar() {
@@ -19,6 +19,12 @@ export default function Sidebar() {
         </NavLink>
         <NavLink to="/all-photos" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
           <ImageIcon size={18} /> All Photos
+        </NavLink>
+        <NavLink to="/favorites" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
+          <Heart size={18} /> Favorites
+        </NavLink>
+        <NavLink to="/collections" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
+          <Layers size={18} /> Collections
         </NavLink>
         <NavLink to="/folders" className={({isActive}) => `sidebar-nav-link ${isActive ? 'active' : ''}`}>
           <Folder size={18} /> Folders

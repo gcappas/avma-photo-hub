@@ -9,6 +9,7 @@ admin.initializeApp();
 
 
 
+
 exports.analyzePhoto = onObjectFinalized({ 
   memory: "1GiB",
   timeoutSeconds: 120,
@@ -56,19 +57,56 @@ exports.analyzePhoto = onObjectFinalized({
     return console.log(`Photo ${filePath} (${docId}) is already analyzed and ready.`);
   }
 
-  // Handle HEIC conversion inline
+  // 1. Download file buffer once
+  let fileBuffer = null;
+  try {
+    const file = bucket.file(filePath);
+    const [downloadedBuffer] = await file.download();
+    fileBuffer = downloadedBuffer;
+  } catch (err) {
+    console.error("Failed to download file for processing:", err);
+    await photosRef.doc(docId).update({ status: 'error_download' });
+    return;
+  }
+
+  // 2. Extract EXIF data
+  let exifData = null;
+  try {
+    const exifr = require('exifr');
+    const exif = await exifr.parse(fileBuffer);
+    if (exif) {
+      exifData = {};
+      if (exif.Make) exifData.make = String(exif.Make);
+      if (exif.Model) exifData.model = String(exif.Model);
+      if (exif.LensModel) exifData.lens = String(exif.LensModel);
+      if (exif.DateTimeOriginal) {
+         try {
+           exifData.dateTimeOriginal = new Date(exif.DateTimeOriginal).toISOString();
+         } catch(e) {}
+      }
+      if (exif.latitude != null) exifData.latitude = Number(exif.latitude);
+      if (exif.longitude != null) exifData.longitude = Number(exif.longitude);
+      
+      if (Object.keys(exifData).length === 0) exifData = null;
+    }
+  } catch (err) {
+    console.warn("Could not extract EXIF data:", err);
+  }
+
+  // 3. Handle HEIC conversion inline
   if (isHeic) {
     console.log(`HEIC image detected. Converting ${filePath} to JPEG...`);
     try {
       const file = bucket.file(filePath);
-      const [buffer] = await file.download();
       
       const convert = require("heic-convert");
       const outputBuffer = await convert({
-        buffer: buffer,
+        buffer: fileBuffer,
         format: 'JPEG',
         quality: 0.92
       });
+      
+      fileBuffer = outputBuffer; // Update buffer for thumbnail generation
       
       activeFilePath = convertedJpgPath;
       activeContentType = 'image/jpeg';
@@ -98,7 +136,39 @@ exports.analyzePhoto = onObjectFinalized({
     }
   }
 
-  // Run Gemini AI Analysis
+  // 4. Generate Thumbnail
+  let thumbnailUrl = null;
+  try {
+    const sharp = require('sharp');
+    const thumbBuffer = await sharp(fileBuffer)
+      .resize({ width: 400, height: 400, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+      
+    // Generate thumbnail path (e.g., photos/1234_thumb.webp)
+    const extIndex = activeFilePath.lastIndexOf('.');
+    const thumbPath = extIndex !== -1 
+      ? activeFilePath.substring(0, extIndex) + '_thumb.webp' 
+      : activeFilePath + '_thumb.webp';
+      
+    const thumbFile = bucket.file(thumbPath);
+    const crypto = require("crypto");
+    const token = crypto.randomUUID();
+    
+    await thumbFile.save(thumbBuffer, {
+      metadata: { 
+        contentType: 'image/webp',
+        metadata: { firebaseStorageDownloadTokens: token } 
+      }
+    });
+    
+    thumbnailUrl = `https://firebasestorage.googleapis.com/v0/b/${fileBucket}/o/${encodeURIComponent(thumbPath)}?alt=media&token=${token}`;
+    console.log(`Successfully generated thumbnail for ${docId}`);
+  } catch (err) {
+    console.error("Thumbnail generation failed:", err);
+  }
+
+  // 5. Run Gemini AI Analysis
   console.log(`Running Gemini AI analysis for photo ${docId} (${activeFilePath})...`);
   const ai = new GoogleGenAI({
     vertexai: true,
@@ -144,6 +214,8 @@ exports.analyzePhoto = onObjectFinalized({
     if (newFilename) updateData.filename = newFilename;
     if (activeFileSize) updateData.size = activeFileSize;
     updateData.contentType = activeContentType;
+    if (thumbnailUrl) updateData.thumbnailUrl = thumbnailUrl;
+    if (exifData) updateData.exif = exifData;
 
     await photosRef.doc(docId).update(updateData);
     console.log(`Successfully analyzed and updated document ${docId}`);
