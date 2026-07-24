@@ -220,6 +220,26 @@ export default function AllPhotosView({ searchQuery }) {
     }
   };
 
+  const currentIndex = selectedPhoto ? filteredPhotos.findIndex(p => p.id === selectedPhoto.id) : -1;
+  const hasNext = currentIndex >= 0 && currentIndex < filteredPhotos.length - 1;
+  const hasPrev = currentIndex > 0;
+  
+  const handleNext = () => {
+    if (hasNext) {
+      const nextPhoto = filteredPhotos[currentIndex + 1];
+      setSelectedPhoto(nextPhoto);
+      setSearchParams({ photo: nextPhoto.id });
+    }
+  };
+
+  const handlePrev = () => {
+    if (hasPrev) {
+      const prevPhoto = filteredPhotos[currentIndex - 1];
+      setSelectedPhoto(prevPhoto);
+      setSearchParams({ photo: prevPhoto.id });
+    }
+  };
+
   return (
     <div style={{ display: 'flex', gap: '2rem', height: '100%' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -423,6 +443,10 @@ export default function AllPhotosView({ searchQuery }) {
         onDelete={handleDeletePhoto}
         onAddTag={handleAddTag}
         onRemoveTag={handleRemoveTag}
+        onNext={handleNext}
+        onPrev={handlePrev}
+        hasNext={hasNext}
+        hasPrev={hasPrev}
       />
     </div>
   );

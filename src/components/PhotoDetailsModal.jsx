@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Link2, Download, Trash2, Loader2, RotateCcw } from 'lucide-react';
+import { X, Plus, Link2, Download, Trash2, Loader2, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 
-export default function PhotoDetailsModal({ photo, onClose, onDownload, onDelete, onAddTag, onRemoveTag, isTrashView, onRestore }) {
+export default function PhotoDetailsModal({ photo, onClose, onDownload, onDelete, onAddTag, onRemoveTag, isTrashView, onRestore, onNext, onPrev, hasNext, hasPrev }) {
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Close on Escape key press
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowRight' && hasNext && onNext) onNext();
+      if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [onClose, onNext, onPrev, hasNext, hasPrev]);
 
   // Prevent background scrolling while modal is open
   useEffect(() => {
@@ -27,9 +29,21 @@ export default function PhotoDetailsModal({ photo, onClose, onDownload, onDelete
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-content lightbox-modal" onClick={e => e.stopPropagation()}>
         
-        {/* Left Side - Large Photo Viewer */}
+        {/* Left Side - Large Photo Viewer with Nav Arrows */}
         <div className="lightbox-photo-container">
+          {hasPrev && (
+            <button className="nav-arrow left-arrow" onClick={onPrev}>
+              <ChevronLeft size={36} />
+            </button>
+          )}
+          
           <img src={photo.originalUrl} alt={photo.filename} className="lightbox-img" />
+
+          {hasNext && (
+            <button className="nav-arrow right-arrow" onClick={onNext}>
+              <ChevronRight size={36} />
+            </button>
+          )}
         </div>
 
         {/* Right Side - Photo Details Panel */}
