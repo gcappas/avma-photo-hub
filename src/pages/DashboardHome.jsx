@@ -1,14 +1,33 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { collection, query, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, onSnapshot, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Folder, FileImage, UploadCloud, Sparkles, Clock, ArrowRight, HardDrive, Tag } from 'lucide-react';
+import { Folder, FileImage, UploadCloud, Sparkles, Clock, ArrowRight, HardDrive, Tag, ImagePlus } from 'lucide-react';
 import UploadManager from '../components/UploadManager';
 
 export default function DashboardHome({ searchQuery }) {
   const navigate = useNavigate();
   const [folders, setFolders] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [aiUsage, setAiUsage] = useState({ used: 0, limit: 100 });
+
+  // Fetch AI Usage for the current month
+  useEffect(() => {
+    const fetchUsage = async () => {
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      try {
+        const docRef = doc(db, 'ai_usage', currentMonthKey);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setAiUsage({ used: docSnap.data().count || 0, limit: 100 });
+        }
+      } catch (err) {
+        console.error("Failed to fetch AI usage:", err);
+      }
+    };
+    fetchUsage();
+  }, []);
 
   // Fetch all active folders for metrics
   useEffect(() => {
@@ -211,6 +230,36 @@ export default function DashboardHome({ searchQuery }) {
               </div>
               <div style={{ fontSize: '0.75rem', color: '#004B91', fontWeight: 600 }}>
                 Click to Manage Folders →
+              </div>
+            </div>
+          </div>
+
+          {/* Bubble 5: AI Images Generated */}
+          <div 
+            className="glass" 
+            style={{ 
+              padding: '1.5rem', 
+              borderRadius: '16px', 
+              background: 'linear-gradient(135deg, rgba(142, 36, 170, 0.08) 0%, rgba(255, 255, 255, 0.9) 100%)',
+              border: '1px solid rgba(142, 36, 170, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1.25rem',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+            }}
+          >
+            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: '#F3E5F5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8E24AA' }}>
+              <ImagePlus size={26} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                AI Generations
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-dark)', margin: '2px 0' }}>
+                {aiUsage.used} / {aiUsage.limit}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#8E24AA', fontWeight: 600 }}>
+                {aiUsage.limit - aiUsage.used} Remaining This Month
               </div>
             </div>
           </div>
