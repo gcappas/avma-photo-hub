@@ -183,15 +183,6 @@ export default function FolderView({ searchQuery }) {
     fetchActiveFolders();
   }, [showMoveModal, folderId]);
 
-  // Auto-open selected photo on load if URL deep link is provided
-  useEffect(() => {
-    if (photoParam && photos.length > 0) {
-      const matched = photos.find(p => p.id === photoParam);
-      if (matched) {
-        setSelectedPhoto(matched);
-      }
-    }
-  }, [photoParam, photos]);
 
   // Client-side search and folder filtering memoized for performance
   const filteredPhotos = useMemo(() => {
@@ -230,8 +221,27 @@ export default function FolderView({ searchQuery }) {
 
         return inFilename || inDesc || inTags;
       });
+    }).sort((a, b) => {
+      // Sort by active tags first (match count), then by created date
+      const aMatches = Array.isArray(a.tags) ? a.tags.filter(t => terms.includes(t)).length : 0;
+      const bMatches = Array.isArray(b.tags) ? b.tags.filter(t => terms.includes(t)).length : 0;
+      if (aMatches !== bMatches) return bMatches - aMatches;
+      
+      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bTime - aTime;
     });
   }, [photos, isTrashView, isAllPhotos, folderId, searchQuery]);
+
+  // Auto-open selected photo on load if URL deep link is provided
+  useEffect(() => {
+    if (photoParam && filteredPhotos.length > 0) {
+      const matched = filteredPhotos.find(p => p.id === photoParam);
+      if (matched) {
+        setSelectedPhoto(matched);
+      }
+    }
+  }, [photoParam, filteredPhotos]);
 
   const filteredFolders = useMemo(() => {
     const rawQuery = (searchQuery || '').trim().toLowerCase();
@@ -403,13 +413,14 @@ export default function FolderView({ searchQuery }) {
   const handleDeletePhoto = async (photo) => {
     if (isTrashView) {
       if (!window.confirm("Are you sure you want to permanently delete this photo? This cannot be undone.")) return;
+      setSelectedPhoto(null);
+      setSearchParams({});
       try {
         await deleteDoc(doc(db, 'photos', photo.id));
         if (photo.storagePath) {
           const storageRef = ref(storage, photo.storagePath);
           await deleteObject(storageRef).catch(() => {});
         }
-        setSelectedPhoto(null);
       } catch (err) {
         console.error("Permanent delete failed:", err);
       }
@@ -417,12 +428,13 @@ export default function FolderView({ searchQuery }) {
     }
 
     if (!window.confirm("Move this photo to the Trash Bin?")) return;
+    setSelectedPhoto(null);
+    setSearchParams({});
     try {
       await updateDoc(doc(db, 'photos', photo.id), {
         status: 'deleted',
         deletedAt: serverTimestamp()
       });
-      setSelectedPhoto(null);
     } catch (error) {
       console.error("Error trashing photo:", error);
       alert("Failed to trash photo.");
@@ -430,12 +442,13 @@ export default function FolderView({ searchQuery }) {
   };
 
   const handleRestorePhoto = async (photo) => {
+    setSelectedPhoto(null);
+    setSearchParams({});
     try {
       await updateDoc(doc(db, 'photos', photo.id), {
         status: 'ready',
         deletedAt: null
       });
-      setSelectedPhoto(null);
       alert("Photo restored successfully!");
     } catch (err) {
       console.error("Restore failed:", err);

@@ -37,15 +37,7 @@ export default function AllPhotosView({ searchQuery }) {
     return unsubscribe;
   }, []);
 
-  // Auto-open selected photo on load if URL deep link is provided
-  useEffect(() => {
-    if (photoParam && photos.length > 0) {
-      const matched = photos.find(p => p.id === photoParam);
-      if (matched) {
-        setSelectedPhoto(matched);
-      }
-    }
-  }, [photoParam, photos]);
+
 
   // Extract top 8 AI Category Tags dynamically for filter chips
   // Dynamically extract all unique AI Category Tags for dropdown filter
@@ -107,8 +99,27 @@ export default function AllPhotosView({ searchQuery }) {
 
         return inFilename || inDesc || inTags;
       });
+    }).sort((a, b) => {
+      // Sort by active tags first (match count), then by created date
+      const aMatches = Array.isArray(a.tags) ? a.tags.filter(t => terms.includes(t)).length : 0;
+      const bMatches = Array.isArray(b.tags) ? b.tags.filter(t => terms.includes(t)).length : 0;
+      if (aMatches !== bMatches) return bMatches - aMatches;
+      
+      const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bTime - aTime;
     });
   }, [photos, selectedCategory, searchQuery]);
+
+  // Auto-open selected photo on load if URL deep link is provided
+  useEffect(() => {
+    if (photoParam && filteredPhotos.length > 0) {
+      const matched = filteredPhotos.find(p => p.id === photoParam);
+      if (matched) {
+        setSelectedPhoto(matched);
+      }
+    }
+  }, [photoParam, filteredPhotos]);
 
   const handlePhotoClick = (photo) => {
     if (isSelectMode) {
@@ -164,13 +175,13 @@ export default function AllPhotosView({ searchQuery }) {
 
   const handleDeletePhoto = async (photo) => {
     if (!window.confirm("Move this photo to the Trash Bin?")) return;
+    setSelectedPhoto(null);
+    setSearchParams({});
     try {
       await updateDoc(doc(db, 'photos', photo.id), {
         status: 'deleted',
         deletedAt: new Date()
       });
-      setSelectedPhoto(null);
-      setSearchParams({});
     } catch (err) {
       console.error("Move to trash failed:", err);
     }
