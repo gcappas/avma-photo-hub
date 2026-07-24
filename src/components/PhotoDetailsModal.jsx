@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Plus, Link2, Download, Trash2, Loader2, RotateCcw, ChevronLeft, ChevronRight, Heart, Layers } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Plus, Link2, Download, Trash2, Loader2, RotateCcw, ChevronLeft, ChevronRight, Heart, Layers, ZoomIn } from 'lucide-react';
 import { collection, query, getDocs, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -7,6 +7,60 @@ export default function PhotoDetailsModal({ photo, onClose, onDownload, onDelete
   const [isDownloading, setIsDownloading] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [collectionsList, setCollectionsList] = useState([]);
+
+  // Zoom and Pan state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef(null);
+
+  // Reset zoom when photo changes
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [photo?.id]);
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const zoomSensitivity = 0.005;
+    setZoom(prev => {
+      const newZoom = Math.max(1, Math.min(prev - e.deltaY * zoomSensitivity, 10));
+      if (newZoom === 1) setPan({ x: 0, y: 0 }); // reset pan if zoomed out fully
+      return newZoom;
+    });
+  };
+
+  const handleMouseDown = (e) => {
+    if (zoom > 1) {
+      e.preventDefault();
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isDragging && zoom > 1) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Add event listeners for wheel inside the container to prevent page scroll
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      // Non-passive listener so we can preventDefault
+      el.addEventListener('wheel', handleWheel, { passive: false });
+      return () => el.removeEventListener('wheel', handleWheel);
+    }
+  }, []);
 
   useEffect(() => {
     if (!showCollectionModal) return;
@@ -63,17 +117,43 @@ export default function PhotoDetailsModal({ photo, onClose, onDownload, onDelete
       <div className="modal-content lightbox-modal" onClick={e => e.stopPropagation()}>
         
         {/* Left Side - Large Photo Viewer with Nav Arrows */}
-        <div className="lightbox-photo-container">
+        <div 
+          className="lightbox-photo-container" 
+          ref={containerRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{ overflow: 'hidden', position: 'relative', cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+        >
           {hasPrev && (
-            <button className="nav-arrow left-arrow" onClick={onPrev} data-tooltip="Previous (Left Arrow)">
+            <button className="nav-arrow left-arrow" onClick={(e) => { e.stopPropagation(); onPrev(); }} data-tooltip="Previous (Left Arrow)">
               <ChevronLeft size={36} />
             </button>
           )}
           
-          <img src={photo.originalUrl} alt={photo.filename} className="lightbox-img" />
+          <img 
+            src={photo.originalUrl} 
+            alt={photo.filename} 
+            className="lightbox-img" 
+            style={{ 
+              transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`, 
+              transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+              transformOrigin: 'center center',
+              willChange: 'transform'
+            }} 
+            draggable="false"
+          />
+
+          {zoom > 1 && (
+            <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: 'white', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px', zIndex: 10 }}>
+              <ZoomIn size={16} /> {Math.round(zoom * 100)}% 
+              <button onClick={() => { setZoom(1); setPan({x:0, y:0}); }} style={{ background: 'none', border: 'none', color: 'var(--primary-light)', cursor: 'pointer', fontWeight: 600, marginLeft: '4px' }}>Reset</button>
+            </div>
+          )}
 
           {hasNext && (
-            <button className="nav-arrow right-arrow" onClick={onNext} data-tooltip="Next (Right Arrow)">
+            <button className="nav-arrow right-arrow" onClick={(e) => { e.stopPropagation(); onNext(); }} data-tooltip="Next (Right Arrow)">
               <ChevronRight size={36} />
             </button>
           )}
